@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const RegexTag = enum {
+pub const RegexTag = enum {
     char,
     epsilon,
     concat,
@@ -8,7 +8,7 @@ const RegexTag = enum {
     star,
 };
 
-const RegexNode = union(RegexTag) {
+pub const RegexNode = union(RegexTag) {
     char: u8,
     epsilon: void,
     concat: struct { left: *RegexNode, right: *RegexNode },
