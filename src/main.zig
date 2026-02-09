@@ -2,12 +2,15 @@ const std = @import("std");
 const regexcomp = @import("regexcomp");
 const ast = @import("regex_ast.zig");
 const nfa = @import("nfa.zig");
+const dfa = @import("dfa.zig");
+
 
 pub fn main() !void {
     // 1. Setup the allocator
     const allocator = std.heap.page_allocator;
 
-    const input = "1(3|45)*";
+    const input = "(1|10)(1|10)*";
+    // const input = "11(11)*|111(111)*";
 
     std.debug.print("Input: {s}\n", .{input});
 
@@ -25,4 +28,14 @@ pub fn main() !void {
     const frag = try nfa.compileNode(arena.allocator(), tree, &automaton);
     automaton.states.items[frag.accept].is_accept = true;
     nfa.dumpNFA(&automaton);
+
+
+    const dfa_aut = try dfa.makeDFA(
+        allocator,
+        &automaton,
+        frag.start,
+    );
+    // defer dfa_aut.deinit(allocator);
+
+    dfa.dumpDFA(&dfa_aut);
 }
