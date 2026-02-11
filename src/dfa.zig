@@ -254,4 +254,143 @@ pub fn dumpDFA(dfa: *const DFA) void {
 }
 
 
+pub const DenseDFA = struct {
+    start: StateId,
+    accept: []bool,  // len = num_states (including dead)
+    next: []StateId, // len = num_states * 256
+
+    // if you use an arena for this, you can skip deinit entirely
+    pub fn deinit(self: *DenseDFA, a: std.mem.Allocator) void {
+        a.free(self.next);
+        a.free(self.accept);
+    }
+};
+
+pub fn toDense(
+    allocator: std.mem.Allocator,
+    sparse: *const DFA,
+) !DenseDFA {
+    const n_states: usize = sparse.edges.len;
+    const dead: StateId = @intCast(n_states);
+    const total_states: usize = n_states + 1;
+    std.debug.assert(total_states < std.math.maxInt(StateId));
+
+    const accept = try allocator.alloc(bool, total_states);
+    @memcpy(accept[0..n_states], sparse.accept);
+    accept[dead] = false;
+
+    const next = try allocator.alloc(StateId, total_states * 256);
+    for (next) |*p| p.* = dead;
+
+    for (sparse.edges, 0..) |lst, s_usize| {
+        const state: StateId = @intCast(s_usize);
+        for (lst.items) |edge| {
+            next[@as(usize, state) * 256 + edge.ch] = edge.to;
+        }
+    }
+
+    // dead state loops to itself on all bytes
+    for (0..256) |ch| {
+        next[@as(usize, dead) * 256 + ch] = dead;
+    }
+
+    return .{
+        .start = sparse.start,
+        .accept = accept,
+        .next = next,
+    };
+}
+
+
+pub fn dumpDense(dfa: *const DenseDFA) void {
+    const n = dfa.accept.len;
+    for (0..n) |s| {
+        std.debug.print("State {d}", .{s});
+        if (dfa.accept[s]) std.debug.print(" [accept]", .{});
+        std.debug.print("\n", .{});
+
+        for (0..256) |ch_usize| {
+            const ch: u8 = @intCast(ch_usize);
+            const to = dfa.next[s * 256 + ch_usize];
+            if (to != n - 1) { // if not dead (optional filter)
+                std.debug.print("  '{c}' -> {d}\n", .{ ch, to });
+            }
+        }
+    }
+}
+
+
+pub fn dumpParker(dfa: *const DenseDFA) !void {
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    const n = dfa.accept.len;
+    const dead = n - 1;
+
+
+    try stdout.print("type = DFA\n", .{});
+    // print states
+    try stdout.print("Q = {{", .{});
+    for (0..dead) |s| {
+        try stdout.print("q{d}, ", .{s});
+    }
+    try stdout.print("dead}}\n", .{});
+
+    // get used characters
+    var used: [256]bool = [_]bool{false} ** 256;
+    for (0..dead) |s| {
+        for (0..256) |ch| {
+            const to = dfa.next[s * 256 + ch];
+            if (to != dead) {
+                used[ch] = true;
+            }
+        }
+
+    }
+
+    // print alphabet
+    try stdout.print("E = {{", .{});
+    for (0..256) |ch_usize| {
+    const ch: u8 = @intCast(ch_usize);
+    if (used[ch_usize]) try stdout.print("{c}, ", .{ch});
+    }
+    try stdout.print("}}\n", .{});
+
+    //print final states
+    try stdout.print("F = {{", .{});
+    for (0..dead) |s| {
+        if (dfa.accept[s]) try stdout.print("q{d}, ", .{s});
+    }
+    try stdout.print("}}\n", .{});
+
+    // print initial state
+    try stdout.print("q0 = q0\n", .{});
+
+    // print transition functions
+    for (0..dead) |s| {
+
+        try stdout.print("\n//State {d}", .{s});
+        if (dfa.accept[s]) try stdout.print(" [accept]", .{});
+        try stdout.print("\n", .{});
+
+        for (0..256) |ch_usize| {
+            const ch: u8 = @intCast(ch_usize);
+            const to = dfa.next[s * 256 + ch_usize];
+            if (to != dead) {
+                try stdout.print("d(q{d}, {c}) = q{d}\n", .{s, ch, to});
+            } else if (used[ch] == true) {
+                try stdout.print("d(q{d}, {c}) = dead\n", .{s, ch});
+            }
+        }
+    }
+    try stdout.flush();
+}
+
+pub fn matches(dfa: *const DenseDFA, input: []const u8) bool {
+    var state: StateId = dfa.start;
+    for (input) |ch| {
+        state = dfa.next[@as(usize, state) * 256 + ch];
+    }
+    return dfa.accept[@as(usize, state)];
+}
 
