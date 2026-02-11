@@ -241,10 +241,10 @@ pub fn makeDFA(
 }
 
 
-pub fn dumpDFA(dfa_aut: *const DFA) void {
-    for (dfa_aut.edges, 0..) |edges, i| {
+pub fn dumpDFA(dfa: *const DFA) void {
+    for (dfa.edges, 0..) |edges, i| {
         std.debug.print("DFA State {d}", .{i});
-        if (dfa_aut.accept[i]) std.debug.print(" [accept]", .{});
+        if (dfa.accept[i]) std.debug.print(" [accept]", .{});
         std.debug.print("\n", .{});
 
         for (edges.items) |e| {
