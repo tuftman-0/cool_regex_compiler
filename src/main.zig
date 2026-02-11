@@ -22,20 +22,30 @@ pub fn main() !void {
     var arena: std.heap.ArenaAllocator = .init(allocator);
     defer arena.deinit();
     const tree = try ast.buildAST(arena.allocator(), ir);
+
+    std.debug.print("\nAST\n", .{});
     tree.print(0);
+
 
     var automaton = nfa.NFA{};
     const frag = try nfa.compileNode(arena.allocator(), tree, &automaton);
     automaton.states.items[frag.accept].is_accept = true;
+    std.debug.print("\nNFA\n", .{});
     nfa.dumpNFA(&automaton);
 
 
-    const dfa_aut = try dfa.makeDFA(
+    const sparse_dfa = try dfa.makeDFA(
         allocator,
         &automaton,
         frag.start,
     );
-    // defer dfa_aut.deinit(allocator);
+    // defer sparse_dfa.deinit(allocator);
 
-    dfa.dumpDFA(&dfa_aut);
+    std.debug.print("\nsparse DFA\n", .{});
+    dfa.dumpDFA(&sparse_dfa);
+
+    const dense_dfa = try dfa.toDense(arena.allocator(), &sparse_dfa);
+    std.debug.print("\ndense DFA\n", .{});
+    dfa.dumpDense(&dense_dfa);
+    try dfa.dumpParker(&dense_dfa);
 }
