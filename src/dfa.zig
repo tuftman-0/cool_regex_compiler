@@ -25,7 +25,7 @@ fn bitsetClearAndCopy(out: *BitSet, src: *const BitSet) void {
     while (it.next()) |idx| out.set(idx);
 }
 
-/// out = ε-closure(input)
+/// out = epsilon-closure(input)
 fn epsilonClosure(
     allocator: std.mem.Allocator,
     nfa: *const NFA,
@@ -134,87 +134,69 @@ fn cloneBitSet(allocator: std.mem.Allocator, n_bits: usize, src: *const BitSet) 
     return dst;
 }
 
+
 pub fn makeDFA(
     allocator: std.mem.Allocator,
     nfa: *const NFA,
     nfa_start: StateId,
 ) !DFA {
+    var scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer scratch_arena.deinit();
+    const scratch_allocator = scratch_arena.allocator();
     const N = nfa.states.items.len;
 
-    // start_set = ε-closure({nfa_start})
-    var singleton = try BitSet.initEmpty(allocator, N);
-    // defer singleton.deinit(allocator);
+    // start_set = epsilon-closure({nfa_start})
+    var singleton = try BitSet.initEmpty(scratch_allocator, N);
     singleton.set(nfa_start);
 
-    var start_set = try BitSet.initEmpty(allocator, N);
-    // defer start_set.deinit(allocator);
-    try epsilonClosure(allocator, nfa, &singleton, &start_set);
+    var start_set = try BitSet.initEmpty(scratch_allocator, N);
+    try epsilonClosure(scratch_allocator, nfa, &singleton, &start_set);
 
-    var tmp_closure = try BitSet.initEmpty(allocator, N);
-    // defer tmp_closure.deinit(allocator);
+    var tmp_closure = try BitSet.initEmpty(scratch_allocator, N);
 
     var buckets: Buckets = .{ .sets = undefined };
-    try bucketsInit(allocator, &buckets, N);
-    // defer bucketsDeinit(allocator, &buckets);
+    try bucketsInit(scratch_allocator, &buckets, N);
 
     // DFA storage
     var dfa_sets = std.ArrayListUnmanaged(BitSet){};
-    // defer {
-    //     // if we error mid-build, clean up bitsets we own
-    //     for (dfa_sets.items) |*s| s.deinit(allocator);
-    //     dfa_sets.deinit(allocator);
-    // }
 
     var edges = std.ArrayListUnmanaged(std.ArrayListUnmanaged(Edge)){};
-    // defer {
-    //     for (edges.items) |*lst| lst.deinit(allocator);
-    //     edges.deinit(allocator);
-    // }
 
     var accept = std.ArrayListUnmanaged(bool){};
-    // defer accept.deinit(allocator);
 
     // seen map: encoded set -> dfa_state_id
-    var seen = std.StringHashMap(StateId).init(allocator);
-    // defer {
-    //     // keys were allocated by us; free them
-    //     var it = seen.keyIterator();
-    //     while (it.next()) |kptr| allocator.free(kptr.*);
-    //     seen.deinit();
-    // }
+    var seen = std.StringHashMap(StateId).init(scratch_allocator);
 
     var queue = std.ArrayListUnmanaged(StateId){};
-    // defer queue.deinit(allocator);
 
     // add start DFA state (id 0)
     const start_id: StateId = 0;
     {
-        const owned_set = try cloneBitSet(allocator, N, &start_set);
-        try dfa_sets.append(allocator, owned_set);
+        const owned_set = try cloneBitSet(scratch_allocator, N, &start_set);
+        try dfa_sets.append(scratch_allocator, owned_set);
 
-        try edges.append(allocator, .{});
-        try accept.append(allocator, isAccepting(nfa, &owned_set));
+        try edges.append(scratch_allocator, .{});
+        // try edges.append(allocator, .{});
+        try accept.append(scratch_allocator, isAccepting(nfa, &owned_set));
+        // try accept.append(allocator, isAccepting(nfa, &owned_set));
 
-        const key = try encodeSetKey(allocator, &owned_set);
+        const key = try encodeSetKey(scratch_allocator, &owned_set);
         try seen.put(key, start_id);
-
-        try queue.append(allocator, start_id);
+        try queue.append(scratch_allocator, start_id);
     }
 
-    // while (queue.items.len > 0) {
     while (queue.pop()) |S_id| {
-        // const S_id = queue.pop();
         const S_set = &dfa_sets.items[S_id];
 
-        try groupByteMoves(allocator, nfa, S_set, &buckets);
+        try groupByteMoves(scratch_allocator, nfa, S_set, &buckets);
 
         for (buckets.used.items) |ch| {
             const move_set = &buckets.sets[ch];
             if (move_set.count() == 0) continue;
 
-            try epsilonClosure(allocator, nfa, move_set, &tmp_closure);
+            try epsilonClosure(scratch_allocator, nfa, move_set, &tmp_closure);
 
-            const key = try encodeSetKey(allocator, &tmp_closure);
+            const key = try encodeSetKey(scratch_allocator, &tmp_closure);
             const gop = try seen.getOrPut(key);
             var T_id: StateId = undefined;
 
@@ -222,20 +204,22 @@ pub fn makeDFA(
                 // new DFA state
                 T_id = @intCast(dfa_sets.items.len);
 
-                const owned = try cloneBitSet(allocator, N, &tmp_closure);
-                try dfa_sets.append(allocator, owned);
+                const owned = try cloneBitSet(scratch_allocator, N, &tmp_closure);
+                try dfa_sets.append(scratch_allocator, owned);
 
-                try edges.append(allocator, .{});
-                try accept.append(allocator, isAccepting(nfa, &owned));
+                try edges.append(scratch_allocator, .{});
+                // try edges.append(allocator, .{});
+                try accept.append(scratch_allocator, isAccepting(nfa, &owned));
+                // try accept.append(allocator, isAccepting(nfa, &owned));
 
                 gop.value_ptr.* = T_id;
-                try queue.append(allocator, T_id);
+                try queue.append(scratch_allocator, T_id);
             } else {
                 // already seen; free the key we just allocated (since map kept old key)
-                allocator.free(key);
                 T_id = gop.value_ptr.*;
             }
 
+            // try edges.items[S_id].append(scratch_allocator, .{ .ch = ch, .to = T_id });
             try edges.items[S_id].append(allocator, .{ .ch = ch, .to = T_id });
         }
     }
@@ -247,18 +231,12 @@ pub fn makeDFA(
     const edges_slice = try allocator.alloc(std.ArrayListUnmanaged(Edge), edges.items.len);
     @memcpy(edges_slice, edges.items);
 
-    // prevent deferred cleanup from double-freeing moved buffers
-    edges.items.len = 0;
-    accept.items.len = 0;
-
-    // dfa_sets bitsets are no longer needed after transitions built; free them
-    // for (dfa_sets.items) |*s| s.deinit(allocator);
-    // dfa_sets.deinit(allocator);
-
     return .{
         .start = start_id,
         .accept = accept_slice,
         .edges = edges_slice,
+        // .accept = accept.items,
+        // .edges = edges.items,
     };
 }
 
