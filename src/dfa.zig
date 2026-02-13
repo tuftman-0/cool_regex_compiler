@@ -367,7 +367,7 @@ pub fn dumpParker(dfa: *const DenseDFA) !void {
     try stdout.print("q0 = q0\n", .{});
 
     // print transition functions
-    for (0..n) |s| {
+    for (0..dead) |s| {
 
         try stdout.print("\n// State {d}", .{s});
         if (dfa.accept[s]) try stdout.print(" [accept]", .{});
@@ -378,13 +378,14 @@ pub fn dumpParker(dfa: *const DenseDFA) !void {
             const to = dfa.next[s * 256 + ch_usize];
             if (to != dead) {
                 try stdout.print("d(q{d}, {c}) = q{d}\n", .{s, ch, to});
-            } else if (used[ch] == true) {
-                if (s != dead) {
-                    try stdout.print("d(q{d}, {c}) = dead\n", .{s, ch});
-                } else {
-                    try stdout.print("d(dead, {c}) = dead\n", .{ch});
-                }
             }
+            //  else if (used[ch] == true) {
+            //     if (s != dead) {
+            //         try stdout.print("d(q{d}, {c}) = dead\n", .{s, ch});
+            //     } else {
+            //         try stdout.print("d(dead, {c}) = dead\n", .{ch});
+            //     }
+            // }
         }
     }
     try stdout.flush();
