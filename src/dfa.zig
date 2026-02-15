@@ -399,3 +399,41 @@ pub fn matches(dfa: *const DenseDFA, input: []const u8) bool {
     return dfa.accept[@as(usize, state)];
 }
 
+fn pairIndex(i: usize, j: usize) usize {
+    std.debug.assert(i < j);
+    return (j * (j - 1)) / 2 + i;
+}
+
+pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
+    const n = dfa.accept.len;
+    const dead = n - 1;
+
+    // get all characters used in transitions
+    var used: [256]bool = [_]bool{false} ** 256;
+    var count: usize = 0;
+    var char_buffer: [256]u8 = undefined;
+    for (0..dead) |s| {
+        for (0..256) |ch| {
+            const to = dfa.next[s * 256 + ch];
+            if (to != dead and !used[ch]) {
+                used[ch] = true;
+                char_buffer[count] = @intCast(ch);
+                count += 1;
+            }
+        }
+    }
+    const chars: []const u8 = char_buffer[0..count];
+    var pred: []std.ArrayListUnmanaged(StateId) = try allocator.alloc(std.ArrayListUnmanaged(StateId), chars.len * n);
+    for (pred) |*lst| lst.* = .{};
+
+    for (chars, 0..) |ch,i| {
+        for (0..dead) |s| {
+            const t: StateId = dfa.next[s*256 + ch];
+            pred[i*n + t].append(allocator, t);
+        }
+    }
+
+    return undefined;
+}
+
+
