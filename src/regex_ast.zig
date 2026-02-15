@@ -1,16 +1,16 @@
 const std = @import("std");
 
 pub const RegexTag = enum {
-    char,
     epsilon,
+    char,
     concat,
     choice,
     star,
 };
 
 pub const RegexNode = union(RegexTag) {
-    char: u8,
     epsilon: void,
+    char: u8,
     concat: struct { left: *RegexNode, right: *RegexNode },
     choice: struct { left: *RegexNode, right: *RegexNode },
     star: *RegexNode,
@@ -55,6 +55,7 @@ fn isEnder(char: u8) bool {
 fn isStarter(char: u8) bool {
     return switch (char) {
         '*' => false,
+        '+' => false,
         '|' => false,
         '.' => false,
         ')' => false,
@@ -65,6 +66,7 @@ fn isStarter(char: u8) bool {
 fn isOperator(char: u8) bool {
     return switch (char) {
         '*' => true,
+        '+' => true,
         '.' => true,
         '|' => true,
         '(' => true,
@@ -75,7 +77,7 @@ fn isOperator(char: u8) bool {
 
 fn opPrecedence(op: u8) u8 {
     return switch (op) {
-        '*' => 3,
+        '*','+' => 3,
         '.' => 2,
         '|' => 1,
         else => 0, // for '('
@@ -128,6 +130,24 @@ fn popAndBuildBinaryNode(
     node_height.* += 1;
 }
 
+fn cloneNode(allocator: std.mem.Allocator, n: *const RegexNode) !*RegexNode {
+    const out = try allocator.create(RegexNode);
+    out.* = switch (n.*) {
+        .char => |c| .{ .char = c },
+        .epsilon => .{ .epsilon = {} },
+        .star => |child| .{ .star = try cloneNode(allocator, child) },
+        .concat => |p| .{ .concat = .{
+            .left = try cloneNode(allocator, p.left),
+            .right = try cloneNode(allocator, p.right),
+        }},
+        .choice => |p| .{ .choice = .{
+            .left = try cloneNode(allocator, p.left),
+            .right = try cloneNode(allocator, p.right),
+        }},
+    };
+    return out;
+}
+
 pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []const u8) !*RegexNode {
     var op_stack: []u8 = try allocator.alloc(u8, tokens.len);
     var op_height: usize = 0;
@@ -141,18 +161,23 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []const u8) !*RegexNod
                 op_height += 1;
             },
             '*' => {
+                if (node_height <= 0) { return error.SyntaxError; }
                 const node: *RegexNode = try allocator.create(RegexNode);
-                if (node_height <= 0) {
-                    //*TODO* add regex syntax error
-                }
                 node.* = .{ .star = node_stack[node_height - 1] };
                 node_stack[node_height-1] = node;
             },
+            '+' => {
+                if (node_height <= 0) { return error.SyntaxError; }
+                const r:       *RegexNode = node_stack[node_height - 1];
+                const r_clone: *RegexNode = try cloneNode(allocator, r);
+                const star:    *RegexNode = try allocator.create(RegexNode);
+                const node:    *RegexNode = try allocator.create(RegexNode);
+                star.* = .{ .star = r_clone };
+                node.* = .{ .concat = .{ .left = r, .right = star } };
+                node_stack[node_height - 1] = node;
+            },
             '.', '|', ')' => {
                 while (op_height > 0 and opPrecedence(op_stack[op_height - 1]) >= opPrecedence(token)) {
-                    if (node_height <= 1) {
-                        //*TODO* add regex syntax error
-                    }
                     op_height -= 1;
                     // build node from operator on stack
                     const op = op_stack[op_height];
@@ -164,6 +189,12 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []const u8) !*RegexNod
                     op_stack[op_height] = token;
                     op_height += 1;
                 }
+            },
+            '~' => {
+                const node: *RegexNode = try allocator.create(RegexNode);
+                node.* = .{ .epsilon = {} };
+                node_stack[node_height] = node;
+                node_height += 1;
             },
             else => {
                 const node: *RegexNode = try allocator.create(RegexNode);
