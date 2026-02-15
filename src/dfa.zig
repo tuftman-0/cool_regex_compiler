@@ -379,13 +379,13 @@ pub fn dumpParker(dfa: *const DenseDFA) !void {
             if (to != dead) {
                 try stdout.print("d(q{d}, {c}) = q{d}\n", .{s, ch, to});
             }
-            //  else if (used[ch] == true) {
-            //     if (s != dead) {
-            //         try stdout.print("d(q{d}, {c}) = dead\n", .{s, ch});
-            //     } else {
-            //         try stdout.print("d(dead, {c}) = dead\n", .{ch});
-            //     }
-            // }
+             else if (used[ch] == true) {
+                if (s != dead) {
+                    try stdout.print("d(q{d}, {c}) = dead\n", .{s, ch});
+                } else {
+                    try stdout.print("d(dead, {c}) = dead\n", .{ch});
+                }
+            }
         }
     }
     try stdout.flush();
