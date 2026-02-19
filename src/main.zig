@@ -63,9 +63,9 @@ fn printHelp() void {
 }
 
 fn handleDump(allocator: std.mem.Allocator, pattern: []const u8, options: [][]u8) !void {
-    // var out_buf: [1 << 16]u8 = undefined;
-    // var stdout_writer = std.fs.File.stdout().writer(&out_buf);
-    // const stdout = &stdout_writer.interface;
+    var out_buf: [1 << 16]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &stdout_writer.interface;
     var dump_ast = false;
     var dump_nfa = false;
     var dump_dfa = false;
@@ -98,22 +98,26 @@ fn handleDump(allocator: std.mem.Allocator, pattern: []const u8, options: [][]u8
     allocator.free(ir);
 
     // *TODO* maybe pass stdout to printing functions
-    if (dump_ast) try tree.print(0);
+    if (dump_ast) try tree.print(stdout, 0);
+    try stdout.flush(); // *TODO* maybe move this to inside function
 
     if (pipeline < 2) return;
     var autobot = nfa.NFA{};
     const frag = try nfa.compileNode(aa, tree, &autobot);
     autobot.states.items[frag.accept].is_accept = true;
-    if (dump_nfa) nfa.dumpNFA(&autobot);
+    if (dump_nfa) nfa.dumpNFA(stdout, &autobot);
+    try stdout.flush(); // *TODO* maybe move this to inside function
 
     if (pipeline < 3) return;
     const sparse_dfa = try dfa.makeDFA(aa, &autobot, frag.start);
     const dense_dfa = try dfa.toDense(aa, &sparse_dfa);
-    if (dump_dfa) try dfa.dumpParker(&dense_dfa, include_dead);
+    if (dump_dfa) try dfa.dumpParker(stdout, &dense_dfa, include_dead);
+    try stdout.flush(); // *TODO* maybe move this to inside function
 
     if (pipeline < 4) return;
     const min_dfa = try dfa.minimize(aa, &dense_dfa);
-    if (dump_min) try dfa.dumpParker(&min_dfa, include_dead);
+    if (dump_min) try dfa.dumpParker(stdout, &min_dfa, include_dead);
+    try stdout.flush(); // *TODO* maybe move this to inside function
 }
 
 fn handleMatch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][]u8) !void {

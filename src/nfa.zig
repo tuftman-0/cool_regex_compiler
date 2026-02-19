@@ -41,18 +41,18 @@ pub const NFA = struct {
 
 };
 
-pub fn dumpNFA(nfa: *NFA) void {
+pub fn dumpNFA(stdout: *std.Io.Writer, nfa: *NFA) void {
     for (nfa.states.items, 0..) |state, i| {
-        std.debug.print("State {d}", .{i});
-        if (state.is_accept) std.debug.print(" [accept]", .{});
-        std.debug.print("\n", .{});
+        stdout.print("State {d}", .{i});
+        if (state.is_accept) stdout.print(" [accept]", .{});
+        stdout.print("\n", .{});
 
         for (state.eps.items) |to| {
-            std.debug.print("  ε -> {d}\n", .{to});
+            stdout.print("  ε -> {d}\n", .{to});
         }
 
         for (state.trans.items) |t| {
-            std.debug.print("  '{c}' -> {d}\n", .{t.ch, t.to});
+            stdout.print("  '{c}' -> {d}\n", .{t.ch, t.to});
         }
     }
 }

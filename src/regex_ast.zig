@@ -15,10 +15,10 @@ pub const RegexNode = union(RegexTag) {
     choice: struct { left: *RegexNode, right: *RegexNode },
     star: *RegexNode,
 
-    pub fn print(self: RegexNode, indent: usize) !void {
-        var out_buf: [1 << 16]u8 = undefined;
-        var stdout_writer = std.fs.File.stdout().writer(&out_buf);
-        const stdout = &stdout_writer.interface;
+    pub fn print(self: RegexNode, stdout: *std.Io.Writer, indent: usize) !void {
+        // var out_buf: [1 << 16]u8 = undefined;
+        // var stdout_writer = std.fs.File.stdout().writer(&out_buf);
+        // const stdout = &stdout_writer.interface;
         // Create a simple indentation string
         var i: usize = 0;
         while (i < indent) : (i += 1) {
@@ -30,17 +30,17 @@ pub const RegexNode = union(RegexTag) {
             .epsilon => try stdout.print("Epsilon\n", .{}),
             .star => |child| {
                 try stdout.print("Star:\n", .{});
-                try child.print(indent + 1);
+                try child.print(stdout, indent + 1);
             },
             .concat => |pair| {
                 try stdout.print("Concat:\n", .{});
-                try pair.left.print(indent + 1);
-                try pair.right.print(indent + 1);
+                try pair.left.print(stdout, indent + 1);
+                try pair.right.print(stdout, indent + 1);
             },
             .choice => |pair| {
                 try stdout.print("Choice:\n", .{});
-                try pair.left.print(indent + 1);
-                try pair.right.print(indent + 1);
+                try pair.left.print(stdout, indent + 1);
+                try pair.right.print(stdout, indent + 1);
             },
         }
     }
