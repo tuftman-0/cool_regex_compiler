@@ -103,7 +103,8 @@ pub fn addConcat(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
         outbuf[outlen] = '.';
         outlen += 1;
     }
-    return outbuf[0..outlen];
+    // return outbuf[0..outlen];
+    return allocator.realloc(outbuf, outlen);
 }
 
 fn popAndBuildBinaryNode(
