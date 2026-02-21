@@ -61,18 +61,18 @@ fn epsilonClosure(
 const Buckets = struct {
     used: std.ArrayList(u8) = .{},
     sets: [256]BitSet, // sets[ch] = NFA states reachable by 'ch' from input-set
-};
 
-fn bucketsInit(allocator: std.mem.Allocator, buckets: *Buckets, n_bits: usize) !void {
-    for (0..256) |i| {
-        buckets.sets[i] = try BitSet.initEmpty(allocator, n_bits);
+    fn init(self: *Buckets, allocator: std.mem.Allocator, n_bits: usize) !void {
+        for (0..256) |i| {
+            self.sets[i] = try BitSet.initEmpty(allocator, n_bits);
+        }
     }
-}
 
-fn bucketsDeinit(allocator: std.mem.Allocator, buckets: *Buckets) void {
-    buckets.used.deinit(allocator);
-    for (0..256) |i| buckets.sets[i].deinit(allocator);
-}
+    fn deinit(self: *Buckets, allocator: std.mem.Allocator) void {
+        self.used.deinit(allocator);
+        for (0..256) |i| self.sets[i].deinit(allocator);
+    }
+};
 
 fn groupByteMoves(
     allocator: std.mem.Allocator,
@@ -134,7 +134,6 @@ fn cloneBitSet(allocator: std.mem.Allocator, n_bits: usize, src: *const BitSet) 
     return dst;
 }
 
-
 pub fn makeDFA(
     allocator: std.mem.Allocator,
     nfa: *const NFA,
@@ -155,7 +154,8 @@ pub fn makeDFA(
     var tmp_closure = try BitSet.initEmpty(scratch_allocator, N);
 
     var buckets: Buckets = .{ .sets = undefined };
-    try bucketsInit(scratch_allocator, &buckets, N);
+    try buckets.init(scratch_allocator, N);
+    // try bucketsInit(scratch_allocator, &buckets, N);
 
     // DFA storage
     var dfa_sets = std.ArrayList(BitSet){};
