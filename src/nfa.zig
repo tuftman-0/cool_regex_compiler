@@ -9,13 +9,13 @@ pub const Transition = struct {
 };
 
 pub const State = struct {
-    eps: std.ArrayListUnmanaged(StateId) = .{},
-    trans: std.ArrayListUnmanaged(Transition) = .{},
+    eps: std.ArrayList(StateId) = .{},
+    trans: std.ArrayList(Transition) = .{},
     is_accept: bool = false,
 };
 
 pub const NFA = struct {
-    states: std.ArrayListUnmanaged(State) = .{},
+    states: std.ArrayList(State) = .{},
 
     pub fn deinit(self: *NFA, a: std.mem.Allocator) void {
         for (self.states.items) |*s| {

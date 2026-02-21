@@ -10,7 +10,7 @@ pub const Edge = struct { ch: u8, to: StateId };
 pub const DFA = struct {
     start: StateId,
     accept: []bool,
-    edges: []std.ArrayListUnmanaged(Edge), // per DFA state
+    edges: []std.ArrayList(Edge), // per DFA state
 
     pub fn deinit(self: *DFA, a: std.mem.Allocator) void {
         for (self.edges) |*lst| lst.deinit(a);
@@ -59,7 +59,7 @@ fn epsilonClosure(
 }
 
 const Buckets = struct {
-    used: std.ArrayListUnmanaged(u8) = .{},
+    used: std.ArrayList(u8) = .{},
     sets: [256]BitSet, // sets[ch] = NFA states reachable by 'ch' from input-set
 };
 
@@ -158,16 +158,13 @@ pub fn makeDFA(
     try bucketsInit(scratch_allocator, &buckets, N);
 
     // DFA storage
-    var dfa_sets = std.ArrayListUnmanaged(BitSet){};
-
-    var edges = std.ArrayListUnmanaged(std.ArrayListUnmanaged(Edge)){};
-
-    var accept = std.ArrayListUnmanaged(bool){};
+    var dfa_sets = std.ArrayList(BitSet){};
+    var edges = std.ArrayList(std.ArrayList(Edge)){};
+    var accept = std.ArrayList(bool){};
 
     // seen map: encoded set -> dfa_state_id
     var seen = std.StringHashMap(StateId).init(scratch_allocator);
-
-    var queue = std.ArrayListUnmanaged(StateId){};
+    var queue = std.ArrayList(StateId){};
 
     // add start DFA state (id 0)
     const start_id: StateId = 0;
@@ -228,7 +225,7 @@ pub fn makeDFA(
     const accept_slice = try allocator.alloc(bool, accept.items.len);
     @memcpy(accept_slice, accept.items);
 
-    const edges_slice = try allocator.alloc(std.ArrayListUnmanaged(Edge), edges.items.len);
+    const edges_slice = try allocator.alloc(std.ArrayList(Edge), edges.items.len);
     @memcpy(edges_slice, edges.items);
 
     return .{
@@ -326,7 +323,7 @@ fn computeReachable(allocator: std.mem.Allocator, d: *const DenseDFA) ![]bool {
     const reachable = try allocator.alloc(bool, n);
     @memset(reachable, false);
 
-    var q = std.ArrayListUnmanaged(StateId){};
+    var q = std.ArrayList(StateId){};
     defer q.deinit(allocator);
 
     reachable[@as(usize, d.start)] = true;
@@ -357,7 +354,7 @@ fn computeReachableWithUsed(
     const reachable = try allocator.alloc(bool, n);
     @memset(reachable, false);
 
-    var q = std.ArrayListUnmanaged(StateId){};
+    var q = std.ArrayList(StateId){};
     defer q.deinit(allocator);
 
     reachable[@as(usize, d.start)] = true;
@@ -481,7 +478,7 @@ pub fn matches(dfa: *const DenseDFA, input: []const u8) bool {
     var state: StateId = dfa.start;
     for (input) |ch| {
         state = dfa.next[@as(usize, state) * 256 + ch];
-        // short circuit on dead (might need to change this if arbitrary machine input is allowed or enforce a dead state that goes nowhere) 
+        // short circuit on dead (might need to change this if arbitrary machine input is allowed or enforce a dead state that goes nowhere)
         if (state == dfa.dead) return false;
     }
     return dfa.accept[@as(usize, state)];
@@ -529,7 +526,7 @@ fn partition(
 
 fn pushWork(
     allocator: std.mem.Allocator,
-    work: *std.ArrayListUnmanaged(usize),
+    work: *std.ArrayList(usize),
     in_work: []bool,
     b: usize,
 ) !void {
@@ -549,10 +546,10 @@ fn splitBlockFromMid(
     allocator: std.mem.Allocator,
     Y: usize,
     mid: usize,
-    block_ranges: *std.ArrayListUnmanaged(Range),
+    block_ranges: *std.ArrayList(Range),
     block_states: []const StateId,
     block_of: []usize,
-    work: *std.ArrayListUnmanaged(usize),
+    work: *std.ArrayList(usize),
     in_work: []bool,
     hit_count: []usize,
     mark_block: ?[]u32,
@@ -743,7 +740,7 @@ pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
     const chars: []const u8 = char_buffer[0..count];
 
     // 1) build predecesor lists for each state and each char pred[ci*n + t] = list of s with delta(s, chars[ci]) = t
-    var pred: []std.ArrayListUnmanaged(StateId) = try allocator.alloc(std.ArrayListUnmanaged(StateId), chars.len * n);
+    var pred: []std.ArrayList(StateId) = try allocator.alloc(std.ArrayList(StateId), chars.len * n);
     for (pred) |*lst| lst.* = .{};
 
     // include dead state as a normal state in preds
@@ -784,19 +781,19 @@ pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
         pos[@as(usize, s)] = i;
     }
 
-    var block_ranges = std.ArrayListUnmanaged(Range){};
-    var in_work = std.ArrayListUnmanaged(bool){};
-    var hit_count = std.ArrayListUnmanaged(usize){};
-    var mark_block = std.ArrayListUnmanaged(Epoch){}; // epoch tag for touched blocks
+    var block_ranges = std.ArrayList(Range){};
+    var in_work = std.ArrayList(bool){};
+    var hit_count = std.ArrayList(usize){};
+    var mark_block = std.ArrayList(Epoch){}; // epoch tag for touched blocks
 
     // helper to append block metadata in sync
     const AppendBlock = struct {
         fn add(
             a: std.mem.Allocator,
-            br: *std.ArrayListUnmanaged(Range),
-            iw: *std.ArrayListUnmanaged(bool),
-            hc: *std.ArrayListUnmanaged(usize),
-            mb: *std.ArrayListUnmanaged(Epoch),
+            br: *std.ArrayList(Range),
+            iw: *std.ArrayList(bool),
+            hc: *std.ArrayList(usize),
+            mb: *std.ArrayList(Epoch),
             r: Range,
         ) !usize {
             const id: usize = br.items.len;
@@ -820,7 +817,7 @@ pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
     }
 
     // 3) Worklist init: push smaller of the initial blocks (classic Hopcroft)
-    var work = std.ArrayListUnmanaged(usize){};
+    var work = std.ArrayList(usize){};
     if (block_ranges.items.len == 1) {
         try pushWork(allocator, &work, in_work.items, 0);
     } else {
@@ -836,7 +833,7 @@ pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
     var epoch_state: Epoch = 1;
     var epoch_block: Epoch = 1;
 
-    var touched_blocks = std.ArrayListUnmanaged(usize){};
+    var touched_blocks = std.ArrayList(usize){};
 
     // 5) Hopcroft main loop
     while (work.pop()) |A| {
