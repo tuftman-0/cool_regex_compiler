@@ -3,6 +3,7 @@ const std = @import("std");
 const ast = @import("regex_ast.zig");
 const nfa = @import("nfa.zig");
 const dfa = @import("dfa.zig");
+const search = @import("search.zig");
 
 
 pub fn main() !void {
@@ -35,6 +36,7 @@ pub fn main() !void {
         try handleMatch(allocator, pattern, slice_args[3..]);
     } else if (std.mem.eql(u8, command, "search") or std.mem.eql(u8, command, "grep")) {
         try handleSearch();
+        // try handleSearch(allocator, pattern, slice_args[3..]);
     } else {
         std.debug.print("Unknown command: {s}\n", .{command});
         return printHelp();
@@ -105,7 +107,7 @@ fn handleDump(allocator: std.mem.Allocator, pattern: []const u8, options: [][]u8
     var autobot = nfa.NFA{};
     const frag = try nfa.compileNode(aa, tree, &autobot);
     autobot.states.items[frag.accept].is_accept = true;
-    if (dump_nfa) nfa.dumpNFA(stdout, &autobot);
+    if (dump_nfa) try nfa.dumpNFA(stdout, &autobot);
     try stdout.flush(); // *TODO* maybe move this to inside function
 
     if (pipeline < 3) return;
@@ -156,10 +158,60 @@ fn handleMatch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][
     }
 }
 
-fn handleSearch() !void {
+fn handleSearch(
+    // allocator: std.mem.Allocator,
+    // pattern: []const u8,
+    // remaining: [][]u8
+) !void {
     var out_buf: [1 << 16]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&out_buf);
     const stdout = &stdout_writer.interface;
+
     try stdout.print("Error: Search/Grep functionality is not implemented yet.\n", .{});
     try stdout.print("Stay tuned for the next release!\n", .{});
+
+    // if (remaining.len == 0) {
+    //     std.debug.print("Error: 'match' requires a string to test.\nUsage: lexis \"{s}\" match \"target_string\"\n", .{pattern});
+    //     return;
+    // }
+
+    // // const wrapped_pattern = try std.fmt.allocPrint(allocator, ".*{s}.*", .{pattern});
+    // const wrapped_pattern = try std.mem.concat(allocator, u8, &[_][]const u8{ ".*", pattern, ".*" });
+    // defer allocator.free(wrapped_pattern);
+
+    // const target = remaining[0];
+    // std.debug.print("Matching \"{s}\" against /{s}/\n", .{target, wrapped_pattern});
+
+    // var arena: std.heap.ArenaAllocator = .init(allocator);
+    // defer arena.deinit();
+    // const aa = arena.allocator();
+
+    // const ir = try ast.addConcat(allocator, wrapped_pattern);
+    // const tree = try ast.shuntingYard(aa, ir);
+    // allocator.free(ir);
+
+    // // *TODO* maybe pass stdout to printing functions
+
+    // var autobot = nfa.NFA{};
+    // const frag = try nfa.compileNode(aa, tree, &autobot);
+    // autobot.states.items[frag.accept].is_accept = true;
+
+    // const sparse_dfa = try dfa.makeDFA(aa, &autobot, frag.start);
+    // const dense_dfa = try dfa.toDense(aa, &sparse_dfa);
+
+    // const min_dfa = try dfa.minimize(aa, &dense_dfa);
+
+    // // *TODO* make work with multiple files
+    // const file = try std.fs.cwd().openFile(target, .{ .read = true });
+    // var reader_buf: [4096]u8 = undefined;
+    // const reader = file.readerStreaming(&reader_buf);
+    // try search.searchFile(stdout, reader, min_dfa);
+
+    // if (dfa.matches(&min_dfa, target)) {
+    //     std.debug.print("Matches\n", .{});
+    //     std.process.exit(0);
+    // } else {
+    //     std.debug.print("No Match\n", .{});
+    //     std.process.exit(1);
+    // }
 }
