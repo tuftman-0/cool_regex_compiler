@@ -237,7 +237,6 @@ pub fn makeDFA(
     };
 }
 
-
 pub fn dumpDFA(dfa: *const DFA) void {
     for (dfa.edges, 0..) |edges, i| {
         std.debug.print("DFA State {d}", .{i});
@@ -250,10 +249,9 @@ pub fn dumpDFA(dfa: *const DFA) void {
     }
 }
 
-
 pub const DenseDFA = struct {
     start: StateId,
-    accept: []bool,  // len = num_states (including dead)
+    accept: []bool, // len = num_states (including dead)
     next: []StateId, // len = num_states * 256
     dead: StateId,
 
@@ -299,7 +297,6 @@ pub fn toDense(
     };
 }
 
-
 pub fn dumpDense(dfa: *const DenseDFA) void {
     const n = dfa.accept.len;
     for (0..n) |s| {
@@ -316,7 +313,6 @@ pub fn dumpDense(dfa: *const DenseDFA) void {
         }
     }
 }
-
 
 fn computeReachable(allocator: std.mem.Allocator, d: *const DenseDFA) ![]bool {
     const n = d.accept.len;
@@ -343,7 +339,6 @@ fn computeReachable(allocator: std.mem.Allocator, d: *const DenseDFA) ![]bool {
 
     return reachable;
 }
-
 
 fn computeReachableWithUsed(
     allocator: std.mem.Allocator,
@@ -572,7 +567,6 @@ fn splitBlockFromMid(
     const Z: usize = block_ranges.items.len;
     try block_ranges.append(allocator, .{ .start = 0, .end = 0 });
 
-
     // Decide which side stays as Y:
     // keep the larger part as Y, move smaller to new Z
     const keep_left = left_len >= right_len;
@@ -601,7 +595,6 @@ fn splitBlockFromMid(
 
     // Worklist update (Hopcroft rule)
     // If Y was in work, push Z as well. Otherwise push the smaller block
-    //
     // NOTE: in_work tracks membership in the worklist
     if (in_work[Y]) {
         try pushWork(allocator, work, in_work, Z);
@@ -622,99 +615,8 @@ fn splitBlockFromMid(
     return Z;
 }
 
-// pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
-//     const n = dfa.accept.len;
-//     const dead = n - 1;
-
-//     // get all characters used in transitions
-//     var used: [256]bool = [_]bool{false} ** 256;
-//     var count: usize = 0;
-//     var char_buffer: [256]u8 = undefined;
-//     for (0..dead) |s| {
-//         for (0..256) |ch| {
-//             const to = dfa.next[s * 256 + ch];
-//             if (to != dead and !used[ch]) {
-//                 used[ch] = true;
-//                 char_buffer[count] = @intCast(ch);
-//                 count += 1;
-//             }
-//         }
-//     }
-
-//     const chars: []const u8 = char_buffer[0..count];
-//     var pred: []std.ArrayListUnmanaged(StateId) = try allocator.alloc(std.ArrayListUnmanaged(StateId), chars.len * n);
-//     for (pred) |*lst| lst.* = .{};
-
-//     for (chars, 0..) |ch,i| {
-//         for (0..dead) |s| {
-//             const t: StateId = dfa.next[s*256 + ch];
-//             pred[i*n + t].append(allocator, t);
-//         }
-//     }
-
-//     var block_states = allocator.alloc(StateId, n);
-//     var pos          = allocator.alloc(usize, n); // pos[s] is position of state s in block_states array
-//     var block_of     = allocator.alloc(usize, n); // block_of[s] = block id, where block_ranges[block id] = block range
-//     var block_ranges = std.ArrayListUnmanaged(Range){};
-//     var in_work      = std.ArrayListUnmanaged(bool){};
-//     var mark_block   = std.ArrayListUnmanaged(Epoch){}; // parallel to blocks
-//     var work         = std.ArrayListUnmanaged(usize);
-
-//     // initialize block_states
-//     for (0..n) |i| {
-//         block_states[i] = @intCast(i);
-//     }
-
-//     // var idx: usize = 0;
-//     // var jdx: usize = n - 1;
-
-//     // while (idx <= jdx) {
-//     //     while (idx < n and dfa.accept[@as(usize, block_states[idx])]) : (idx += 1) {}
-//     //     while (jdx > 0 and !dfa.accept[@as(usize, block_states[jdx])]) : (jdx -= 1) {}
-//     //     if (idx >= jdx) break;
-
-//     //     const tmp = block_states[idx];
-//     //     block_states[idx] = block_states[jdx];
-//     //     block_states[jdx] = tmp;
-
-//     //     idx += 1;
-//     //     if (jdx == 0) break;
-//     //     jdx -= 1;
-//     // }
-//     // const k = idx; // accept block is [0..k)
-
-//     // initial partition (Accept/Not)
-//     var k: usize = 0;
-//     for (0..n) |idx| {
-//         const s = block_states[idx];
-//         if (dfa.accept[@as(usize, s)]) {
-//             // swap idx with k
-//             const t = block_states[k];
-//             block_states[k] = s;
-//             block_states[idx] = t;
-//             k += 1;
-//         }
-//     }
-
-
-//     for (block_states, 0..) |s, i| {
-//         pos[@as(usize,s)] = i;
-//     }
-
-
-
-//     while (work.pop()) |A| {
-//         for (chars, 0..) |ch, ci| {
-            
-            
-//         }
-//     }
-
-//     // initial partition
-//     return undefined;
-// }
-
-
+// *TODO* switch to using a scratch arena for stuff used during construction
+// *TODO* make bookkeeping struct to manage all the stuff going on here
 pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
     const n: usize = dfa.accept.len;
     std.debug.assert(n > 0);
@@ -920,7 +822,7 @@ pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
         }
     }
 
-    // 6) build minimized dfa 
+    // 6) build minimized dfa
     const m: usize = block_ranges.items.len;
     std.debug.assert(m > 0);
 
@@ -974,5 +876,3 @@ pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
         .dead = @intCast(new_dead),
     };
 }
-
-
