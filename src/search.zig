@@ -8,7 +8,7 @@ const dfa = @import("dfa.zig");
 
 const MatchIterator = struct {
     reader: *std.Io.Reader,
-    machine: *dfa.DenseDFA,
+    machine: *const dfa.DenseDFA,
     buf: [4096]u8 = undefined,
 
     pub fn next(self: *MatchIterator) !?[]const u8 {
@@ -20,12 +20,12 @@ const MatchIterator = struct {
 };
 
 
-pub fn searchFile(stdout: std.Io.Writer, reader: std.Io.Reader, machine: *dfa.DenseDFA) !void {
+pub fn searchFile(stdout: *std.Io.Writer, reader: *std.Io.Reader, machine: *const dfa.DenseDFA) !void {
     var iterator = MatchIterator {
         .reader = reader,
         .machine = machine,
     };
-    while (iterator.next()) |line| {
+    while (try iterator.next()) |line| {
         try stdout.print("{s}", .{line});
     }
 }
