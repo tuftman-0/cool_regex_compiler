@@ -259,6 +259,17 @@ pub const DenseDFA = struct {
         a.free(self.next);
         a.free(self.accept);
     }
+
+
+    pub fn matches(self: *const DenseDFA, input: []const u8) bool {
+        var state: StateId = self.start;
+        for (input) |ch| {
+            state = self.next[@as(usize, state) * 256 + ch];
+            // short circuit on dead (might need to change this if arbitrary machine input is allowed or enforce a dead state that goes nowhere)
+            if (state == self.dead) return false;
+        }
+        return self.accept[@as(usize, state)];
+    }
 };
 
 pub fn toDense(
