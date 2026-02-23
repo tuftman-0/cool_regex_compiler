@@ -1,5 +1,16 @@
 const std = @import("std");
 
+pub const Token = union(enum) {
+    literal: u8,
+    dot: void,      // The '.' wildcard
+    star: void,     // '*'
+    plus: void,     // '+'
+    pipe: void,     // '|'
+    l_paren: void,  // '('
+    r_paren: void,  // ')'
+    eof: void,
+};
+
 pub const RegexTag = enum {
     epsilon,
     char,
