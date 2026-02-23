@@ -3,6 +3,14 @@ const ast = @import("regex_ast.zig");
 
 pub const StateId = u16; // or u32
 
+// pub const TransitionTag = enum { ch, any };
+
+// pub const Transition = union(TransitionTag) {
+//     ch: struct { ch: u8, to: StateId },
+//     any: struct { to: StateId }, // means any char except '\n'
+// };
+
+// old
 pub const Transition = struct {
     ch: u8,
     to: StateId,
@@ -38,7 +46,9 @@ pub const NFA = struct {
         try self.states.items[from].trans.append(a, .{ .ch = ch, .to = to });
     }
 
-
+    pub fn addAny(self: *NFA, a: std.mem.Allocator, from: StateId, ch: u8, to: StateId) !void {
+        try self.states.items[from].trans.append(a, .{ .ch = ch, .to = to });
+    }
 };
 
 pub fn dumpNFA(stdout: *std.Io.Writer, nfa: *NFA) !void {
@@ -75,6 +85,9 @@ pub fn compileNode(allocator: std.mem.Allocator, node: *const ast.RegexNode, nfa
             const accept = try nfa.newState(allocator);
             try nfa.addChar(allocator, start, c, accept);
             return .{ .start = start, .accept = accept };
+        },
+        .any => {
+            unreachable;
         },
         .concat => |pair| {
             const left_frag = try compileNode(allocator, pair.left, nfa);

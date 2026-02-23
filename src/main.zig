@@ -95,10 +95,13 @@ fn handleDump(allocator: std.mem.Allocator, pattern: []const u8, options: [][]u8
     defer arena.deinit();
     const aa = arena.allocator();
 
-    const ir = try ast.addConcat(allocator, pattern);
+    const tokens = try ast.tokenize(allocator, pattern);
+    errdefer allocator.free(tokens);
+    const ir = try ast.addConcat(allocator, tokens);
     errdefer allocator.free(ir);
     const tree = try ast.shuntingYard(aa, ir);
     allocator.free(ir);
+    allocator.free(tokens);
 
     // *TODO* maybe pass stdout to printing functions
     if (dump_ast) try tree.print(stdout, 0);
@@ -135,10 +138,13 @@ fn handleMatch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][
     defer arena.deinit();
     const aa = arena.allocator();
 
-    const ir = try ast.addConcat(allocator, pattern);
+    const tokens = try ast.tokenize(allocator, pattern);
+    errdefer allocator.free(tokens);
+    const ir = try ast.addConcat(allocator, tokens);
     errdefer allocator.free(ir);
     const tree = try ast.shuntingYard(aa, ir);
     allocator.free(ir);
+    allocator.free(tokens);
 
     // *TODO* maybe pass stdout to printing functions
 
@@ -192,10 +198,13 @@ fn handleSearch(
     defer arena.deinit();
     const aa = arena.allocator();
 
-    const ir = try ast.addConcat(allocator, wrapped_pattern);
+    const tokens = try ast.tokenize(allocator, wrapped_pattern);
+    errdefer allocator.free(tokens);
+    const ir = try ast.addConcat(allocator, tokens);
     errdefer allocator.free(ir);
     const tree = try ast.shuntingYard(aa, ir);
     allocator.free(ir);
+    allocator.free(tokens);
 
     // *TODO* maybe pass stdout to printing functions
 

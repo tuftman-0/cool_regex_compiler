@@ -2,14 +2,53 @@ const std = @import("std");
 
 pub const Token = union(enum) {
     literal: u8,
-    dot: void,      // The '.' wildcard
+    epsilon: void,  // empty string
+    any: void,      // The '.' wildcard (any character in alphabet)
     star: void,     // '*'
     plus: void,     // '+'
-    pipe: void,     // '|'
+    choice: void,     // '|'
     concat: void,
-    l_paren: void,  // '('
-    r_paren: void,  // ')'
+    lparen: void,  // '('
+    rparen: void,  // ')'
     // eof: void,
+
+    pub fn isEnder(self: Token) bool {
+        return switch (self) {
+            .choice => false,
+            .concat => false,
+            .lparen => false,
+            else => true,
+        };
+    }
+
+    pub fn isStarter(self: Token) bool {
+        return switch (self) {
+            .star => false,
+            .plus => false,
+            .choice => false,
+            .concat => false,
+            .rparen => false,
+            else => true,
+        };
+    }
+
+    pub fn isOperator(self: Token) bool {
+        return switch (self) {
+            .literal => false,
+            .any => false,
+            .epsilon => false,
+            else => true,
+        };
+    }
+
+    pub fn precedence(self: Token) u8 {
+        return switch (self) {
+            .star, .plus => 3,
+            .concat  => 2,
+            .choice => 1,
+            else  => 0, // for '('
+        };
+    }
 };
 
 pub fn tokenize(allocator: std.mem.Allocator, pattern: []const u8) ![]Token {
@@ -21,10 +60,11 @@ pub fn tokenize(allocator: std.mem.Allocator, pattern: []const u8) ![]Token {
         const tok: Token = switch (ch) {
             '*' => .{ .star = {} },
             '+' => .{ .plus = {} },
-            '|' => .{ .pipe = {} },
-            '(' => .{ .l_paren = {} },
-            ')' => .{ .r_paren = {} },
-            '.' => .{ .dot = {} }, // wildcard token
+            '|' => .{ .choice = {} },
+            '(' => .{ .lparen = {} },
+            ')' => .{ .rparen = {} },
+            '.' => .{ .any = {} }, // wildcard token
+            '~' => .{ .epsilon = {} }, // empty string
             '\\' => blk: {
                 if (i + 1 >= pattern.len) return error.TrailingEscape;
                 i += 1; // consume escaped char
@@ -38,58 +78,18 @@ pub fn tokenize(allocator: std.mem.Allocator, pattern: []const u8) ![]Token {
 }
 
 
-fn isEnder(token: Token) bool {
-    return switch (token) {
-        .pipe => false,
-        .concat => false,
-        .l_paren => false,
-        else => true,
-    };
-}
 
-fn isStarter(token: Token) bool {
-    return switch (token) {
-        .star => false,
-        .plus => false,
-        .pipe => false,
-        .concat => false,
-        .r_paren => false,
-        else => true,
-    };
-}
-
-fn isOperator(token: Token) bool {
-    return switch (token) {
-        .literal => false,
-        .dot => false,
-        else => true,
-    };
-}
-
-fn opPrecedence(token: Token) u8 {
-    return switch (token) {
-        .star, .plus => 3,
-        .concat  => 2,
-        .pipe => 1,
-        else  => 0, // for '('
-    };
-}
-
-pub fn addConcat(allocator: std.mem.Allocator, input: []Token) ![]const u8 {
-    var outbuf: []u8 = try allocator.alloc(Token, 2 * input.len);
+pub fn addConcat(allocator: std.mem.Allocator, input: []Token) ![]Token {
     var tokens = try std.ArrayList(Token).initCapacity(allocator, 2*input.len);
     errdefer tokens.deinit(allocator);
-    var outlen: usize = 0;
     for (input, 1..) |token, i| {
         try tokens.append(allocator, token);
         if (i >= input.len) break;
         const next_token = input[i];
-        if (!isEnder(token) or !isStarter(next_token)) continue;
-        outbuf[outlen] = '.';
-        outlen += 1;
+        if (!token.isEnder() or !next_token.isStarter()) continue;
+        try tokens.append(allocator, .{.concat={}});
     }
-    // return outbuf[0..outlen];
-    return allocator.realloc(outbuf, outlen);
+    return try tokens.toOwnedSlice(allocator);
 }
 
 
@@ -97,6 +97,7 @@ pub fn addConcat(allocator: std.mem.Allocator, input: []Token) ![]const u8 {
 pub const RegexTag = enum {
     epsilon,
     char,
+    any,
     concat,
     choice,
     star,
@@ -105,6 +106,7 @@ pub const RegexTag = enum {
 pub const RegexNode = union(RegexTag) {
     epsilon: void,
     char: u8,
+    any: void,
     concat: struct { left: *RegexNode, right: *RegexNode },
     choice: struct { left: *RegexNode, right: *RegexNode },
     star: *RegexNode,
@@ -136,74 +138,32 @@ pub const RegexNode = union(RegexTag) {
                 try pair.left.print(stdout, indent + 1);
                 try pair.right.print(stdout, indent + 1);
             },
+            .any => try stdout.print("Any\n", .{}),
         }
     }
 };
 
-// fn isEnder(char: u8) bool {
-//     return switch (char) {
-//         '|' => false,
-//         '.' => false,
-//         '(' => false,
-//         else => true,
-//     };
-// }
 
-// fn isStarter(char: u8) bool {
-//     return switch (char) {
-//         '*' => false,
-//         '+' => false,
-//         '|' => false,
-//         '.' => false,
-//         ')' => false,
-//         else => true,
-//     };
-// }
 
-// fn isOperator(char: u8) bool {
-//     return switch (char) {
-//         '*' => true,
-//         '+' => true,
-//         '.' => true,
-//         '|' => true,
-//         '(' => true,
-//         ')' => true,
-//         else => false,
-//     };
-// }
+fn mkConcat(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !*RegexNode {
+    // simplify concatenations with epsilon
+    if (left.* == .epsilon) return right;
+    if (right.* == .epsilon) return left;
+    const parent = try allocator.create(RegexNode);
+    parent.* = .{ .concat = .{ .left = left, .right = right } };
+    return parent;
+}
 
-// fn opPrecedence(op: u8) u8 {
-//     return switch (op) {
-//         '*','+' => 3,
-//         '.' => 2,
-//         '|' => 1,
-//         else => 0, // for '('
-//     };
-// }
+fn mkChoice(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !*RegexNode {
+    const parent = try allocator.create(RegexNode);
+    parent.* = .{ .choice = .{ .left = left, .right = right } };
+    return parent;
+}
 
-// pub fn addConcat(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
-//     var outbuf: []u8 = try allocator.alloc(u8, 2 * input.len);
-//     var outlen: usize = 0;
-//     for (input, 1..) |char, i| {
-//         outbuf[outlen] = char;
-//         outlen += 1;
-//         if (i >= input.len) {
-//             break;
-//         }
-//         const next = input[i];
-//         if (!isEnder(char) or !isStarter(next)) {
-//             continue;
-//         }
-//         outbuf[outlen] = '.';
-//         outlen += 1;
-//     }
-//     // return outbuf[0..outlen];
-//     return allocator.realloc(outbuf, outlen);
-// }
 
 fn popAndBuildBinaryNode(
     allocator: std.mem.Allocator,
-    op: u8,
+    op: Token,
     node_stack: *[]*RegexNode,
     node_height: *usize,
 ) !void {
@@ -216,10 +176,9 @@ fn popAndBuildBinaryNode(
     node_height.* -= 2;
 
     // 3. Allocate and link
-    const parent = try allocator.create(RegexNode);
-    parent.* = switch (op) {
-        '.' => .{ .concat = .{ .left = left, .right = right } },
-        '|' => .{ .choice = .{ .left = left, .right = right } },
+    const parent: *RegexNode = switch (op) {
+        .concat => try mkConcat(allocator, left, right),
+        .choice => try mkChoice(allocator, left, right),
         else => return error.InvalidOperator,
     };
 
@@ -233,6 +192,7 @@ fn cloneNode(allocator: std.mem.Allocator, n: *const RegexNode) !*RegexNode {
     out.* = switch (n.*) {
         .char => |c| .{ .char = c },
         .epsilon => .{ .epsilon = {} },
+        .any => .{ .any = {} },
         .star => |child| .{ .star = try cloneNode(allocator, child) },
         .concat => |p| .{ .concat = .{
             .left = try cloneNode(allocator, p.left),
@@ -246,25 +206,27 @@ fn cloneNode(allocator: std.mem.Allocator, n: *const RegexNode) !*RegexNode {
     return out;
 }
 
-pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []const u8) !*RegexNode {
-    var op_stack: []u8 = try allocator.alloc(u8, tokens.len);
+pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []Token) !*RegexNode {
+    var op_stack: []Token = try allocator.alloc(Token, tokens.len);
+    // errdefer allocator.free(op_stack);
     var op_height: usize = 0;
     var node_stack: []*RegexNode = try allocator.alloc(*RegexNode, tokens.len);
+    // errdefer allocator.free(node_stack);
     var node_height: usize = 0;
 
     for (tokens) |token| {
         switch (token) {
-            '(' => {
+            .lparen => {
                 op_stack[op_height] = token;
                 op_height += 1;
             },
-            '*' => {
+            .star => {
                 if (node_height <= 0) { return error.SyntaxError; }
                 const node: *RegexNode = try allocator.create(RegexNode);
                 node.* = .{ .star = node_stack[node_height - 1] };
                 node_stack[node_height-1] = node;
             },
-            '+' => {
+            .plus => {
                 if (node_height <= 0) { return error.SyntaxError; }
                 const r:       *RegexNode = node_stack[node_height - 1];
                 const r_clone: *RegexNode = try cloneNode(allocator, r);
@@ -274,29 +236,33 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []const u8) !*RegexNod
                 node.* = .{ .concat = .{ .left = r, .right = star } };
                 node_stack[node_height - 1] = node;
             },
-            '.', '|', ')' => {
-                while (op_height > 0 and opPrecedence(op_stack[op_height - 1]) >= opPrecedence(token)) {
+            .concat, .choice, .rparen => {
+                while (op_height > 0 and op_stack[op_height - 1].precedence() >= token.precedence()) {
                     op_height -= 1;
                     // build node from operator on stack
                     const op = op_stack[op_height];
-                    if (op == '(') {
-                        break;
-                    }
+                    if (op == .lparen) break;
                     try popAndBuildBinaryNode(allocator, op, &node_stack, &node_height);
                 } else {
                     op_stack[op_height] = token;
                     op_height += 1;
                 }
             },
-            '~' => {
+            .epsilon => {
                 const node: *RegexNode = try allocator.create(RegexNode);
                 node.* = .{ .epsilon = {} };
                 node_stack[node_height] = node;
                 node_height += 1;
             },
-            else => {
+            .any => {
                 const node: *RegexNode = try allocator.create(RegexNode);
-                node.* = .{ .char = token };
+                node.* = .{ .any = {} };
+                node_stack[node_height] = node;
+                node_height += 1;
+            },
+            .literal => |c| {
+                const node: *RegexNode = try allocator.create(RegexNode);
+                node.* = .{ .char = c };
                 node_stack[node_height] = node;
                 node_height += 1;
             },
@@ -306,7 +272,7 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []const u8) !*RegexNod
     while (op_height > 0) {
         op_height -= 1;
         const op = op_stack[op_height];
-        if (op == '(') {
+        if (op == .lparen) {
             @panic("unmatched parenthesis");
         }
 
@@ -314,6 +280,7 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []const u8) !*RegexNod
     }
     return node_stack[0];
 }
+
 
 pub fn buildAST(allocator: std.mem.Allocator, input: []const u8) !*RegexNode {
     const ir = try addConcat(allocator, input);
