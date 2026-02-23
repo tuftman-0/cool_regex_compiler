@@ -6,10 +6,93 @@ pub const Token = union(enum) {
     star: void,     // '*'
     plus: void,     // '+'
     pipe: void,     // '|'
+    concat: void,
     l_paren: void,  // '('
     r_paren: void,  // ')'
-    eof: void,
+    // eof: void,
 };
+
+pub fn tokenize(allocator: std.mem.Allocator, pattern: []const u8) ![]Token {
+    var tokens = try std.ArrayList(Token).initCapacity(allocator, pattern.len);
+    errdefer tokens.deinit(allocator);
+    var i: usize = 0;
+    while (i < pattern.len) : (i += 1) {
+        const ch = pattern[i];
+        const tok: Token = switch (ch) {
+            '*' => .{ .star = {} },
+            '+' => .{ .plus = {} },
+            '|' => .{ .pipe = {} },
+            '(' => .{ .l_paren = {} },
+            ')' => .{ .r_paren = {} },
+            '.' => .{ .dot = {} }, // wildcard token
+            '\\' => blk: {
+                if (i + 1 >= pattern.len) return error.TrailingEscape;
+                i += 1; // consume escaped char
+                break :blk .{ .literal = pattern[i] };
+            },
+            else => .{ .literal = ch },
+        };
+        try tokens.append(allocator, tok);
+    }
+    return try tokens.toOwnedSlice(allocator);
+}
+
+
+fn isEnder(token: Token) bool {
+    return switch (token) {
+        .pipe => false,
+        .concat => false,
+        .l_paren => false,
+        else => true,
+    };
+}
+
+fn isStarter(token: Token) bool {
+    return switch (token) {
+        .star => false,
+        .plus => false,
+        .pipe => false,
+        .concat => false,
+        .r_paren => false,
+        else => true,
+    };
+}
+
+fn isOperator(token: Token) bool {
+    return switch (token) {
+        .literal => false,
+        .dot => false,
+        else => true,
+    };
+}
+
+fn opPrecedence(token: Token) u8 {
+    return switch (token) {
+        .star, .plus => 3,
+        .concat  => 2,
+        .pipe => 1,
+        else  => 0, // for '('
+    };
+}
+
+pub fn addConcat(allocator: std.mem.Allocator, input: []Token) ![]const u8 {
+    var outbuf: []u8 = try allocator.alloc(Token, 2 * input.len);
+    var tokens = try std.ArrayList(Token).initCapacity(allocator, 2*input.len);
+    errdefer tokens.deinit(allocator);
+    var outlen: usize = 0;
+    for (input, 1..) |token, i| {
+        try tokens.append(allocator, token);
+        if (i >= input.len) break;
+        const next_token = input[i];
+        if (!isEnder(token) or !isStarter(next_token)) continue;
+        outbuf[outlen] = '.';
+        outlen += 1;
+    }
+    // return outbuf[0..outlen];
+    return allocator.realloc(outbuf, outlen);
+}
+
+
 
 pub const RegexTag = enum {
     epsilon,
@@ -57,66 +140,66 @@ pub const RegexNode = union(RegexTag) {
     }
 };
 
-fn isEnder(char: u8) bool {
-    return switch (char) {
-        '|' => false,
-        '.' => false,
-        '(' => false,
-        else => true,
-    };
-}
+// fn isEnder(char: u8) bool {
+//     return switch (char) {
+//         '|' => false,
+//         '.' => false,
+//         '(' => false,
+//         else => true,
+//     };
+// }
 
-fn isStarter(char: u8) bool {
-    return switch (char) {
-        '*' => false,
-        '+' => false,
-        '|' => false,
-        '.' => false,
-        ')' => false,
-        else => true,
-    };
-}
+// fn isStarter(char: u8) bool {
+//     return switch (char) {
+//         '*' => false,
+//         '+' => false,
+//         '|' => false,
+//         '.' => false,
+//         ')' => false,
+//         else => true,
+//     };
+// }
 
-fn isOperator(char: u8) bool {
-    return switch (char) {
-        '*' => true,
-        '+' => true,
-        '.' => true,
-        '|' => true,
-        '(' => true,
-        ')' => true,
-        else => false,
-    };
-}
+// fn isOperator(char: u8) bool {
+//     return switch (char) {
+//         '*' => true,
+//         '+' => true,
+//         '.' => true,
+//         '|' => true,
+//         '(' => true,
+//         ')' => true,
+//         else => false,
+//     };
+// }
 
-fn opPrecedence(op: u8) u8 {
-    return switch (op) {
-        '*','+' => 3,
-        '.' => 2,
-        '|' => 1,
-        else => 0, // for '('
-    };
-}
+// fn opPrecedence(op: u8) u8 {
+//     return switch (op) {
+//         '*','+' => 3,
+//         '.' => 2,
+//         '|' => 1,
+//         else => 0, // for '('
+//     };
+// }
 
-pub fn addConcat(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
-    var outbuf: []u8 = try allocator.alloc(u8, 2 * input.len);
-    var outlen: usize = 0;
-    for (input, 1..) |char, i| {
-        outbuf[outlen] = char;
-        outlen += 1;
-        if (i >= input.len) {
-            break;
-        }
-        const next = input[i];
-        if (!isEnder(char) or !isStarter(next)) {
-            continue;
-        }
-        outbuf[outlen] = '.';
-        outlen += 1;
-    }
-    // return outbuf[0..outlen];
-    return allocator.realloc(outbuf, outlen);
-}
+// pub fn addConcat(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
+//     var outbuf: []u8 = try allocator.alloc(u8, 2 * input.len);
+//     var outlen: usize = 0;
+//     for (input, 1..) |char, i| {
+//         outbuf[outlen] = char;
+//         outlen += 1;
+//         if (i >= input.len) {
+//             break;
+//         }
+//         const next = input[i];
+//         if (!isEnder(char) or !isStarter(next)) {
+//             continue;
+//         }
+//         outbuf[outlen] = '.';
+//         outlen += 1;
+//     }
+//     // return outbuf[0..outlen];
+//     return allocator.realloc(outbuf, outlen);
+// }
 
 fn popAndBuildBinaryNode(
     allocator: std.mem.Allocator,
