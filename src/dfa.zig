@@ -89,13 +89,22 @@ fn groupByteMoves(
         const sid: StateId = @intCast(sid_usize);
         const st = &nfa.states.items[sid];
 
-        for (st.trans.items) |tr| {
-            // first time this ch appears for this input set?
-            if (buckets.sets[tr.ch].count() == 0) {
-                try buckets.used.append(allocator, tr.ch);
-            }
-            buckets.sets[tr.ch].set(tr.to);
-        }
+        for (st.trans.items) |tr| switch (tr) {
+            .ch => |x| {
+                if (buckets.sets[x.ch].count() == 0) try buckets.used.append(allocator, x.ch);
+                buckets.sets[x.ch].set(x.to);
+            },
+            .any => |x| {
+                // ANY matches all bytes except '\n'
+                for (0..256) |cu| {
+                    const c: u8 = @intCast(cu);
+                    if (c == '\n') continue;
+
+                    if (buckets.sets[c].count() == 0) try buckets.used.append(allocator, c);
+                    buckets.sets[c].set(x.to);
+                }
+            },
+        };
     }
 }
 

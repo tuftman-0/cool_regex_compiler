@@ -3,18 +3,18 @@ const ast = @import("regex_ast.zig");
 
 pub const StateId = u16; // or u32
 
-// pub const TransitionTag = enum { ch, any };
+pub const TransitionTag = enum { ch, any };
 
-// pub const Transition = union(TransitionTag) {
-//     ch: struct { ch: u8, to: StateId },
-//     any: struct { to: StateId }, // means any char except '\n'
-// };
-
-// old
-pub const Transition = struct {
-    ch: u8,
-    to: StateId,
+pub const Transition = union(TransitionTag) {
+    ch: struct { ch: u8, to: StateId },
+    any: struct { to: StateId }, // means any char except '\n'
 };
+
+// // old
+// pub const Transition = struct {
+//     ch: u8,
+//     to: StateId,
+// };
 
 pub const State = struct {
     eps: std.ArrayList(StateId) = .{},
@@ -43,11 +43,11 @@ pub const NFA = struct {
     }
 
     pub fn addChar(self: *NFA, a: std.mem.Allocator, from: StateId, ch: u8, to: StateId) !void {
-        try self.states.items[from].trans.append(a, .{ .ch = ch, .to = to });
+        try self.states.items[from].trans.append(a, .{ .ch = .{ .ch = ch, .to = to } });
     }
 
-    pub fn addAny(self: *NFA, a: std.mem.Allocator, from: StateId, ch: u8, to: StateId) !void {
-        try self.states.items[from].trans.append(a, .{ .ch = ch, .to = to });
+    pub fn addAny(self: *NFA, a: std.mem.Allocator, from: StateId, to: StateId) !void {
+        try self.states.items[from].trans.append(a, .{ .any = .{ .to = to } });
     }
 };
 
@@ -61,9 +61,10 @@ pub fn dumpNFA(stdout: *std.Io.Writer, nfa: *NFA) !void {
             try stdout.print("  ε -> {d}\n", .{to});
         }
 
-        for (state.trans.items) |t| {
-            try stdout.print("  '{c}' -> {d}\n", .{t.ch, t.to});
-        }
+        for (state.trans.items) |t| switch (t) {
+            .ch => |x| try stdout.print("  '{c}' -> {d}\n", .{ x.ch, x.to }),
+            .any => |x| try stdout.print("  ANY -> {d}\n", .{ x.to }),
+        };
     }
 }
 
@@ -87,7 +88,10 @@ pub fn compileNode(allocator: std.mem.Allocator, node: *const ast.RegexNode, nfa
             return .{ .start = start, .accept = accept };
         },
         .any => {
-            unreachable;
+            const start = try nfa.newState(allocator);
+            const accept = try nfa.newState(allocator);
+            try nfa.addAny(allocator, start, accept);
+            return .{ .start = start, .accept = accept };
         },
         .concat => |pair| {
             const left_frag = try compileNode(allocator, pair.left, nfa);
