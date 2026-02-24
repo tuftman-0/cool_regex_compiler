@@ -26,7 +26,7 @@ pub fn searchFile(stdout: *std.Io.Writer, reader: *std.Io.Reader, machine: *cons
         .machine = machine,
     };
     while (try iterator.next()) |line| {
-        try stdout.print("{s}", .{line});
+        try stdout.print("{s}\n", .{line});
     }
 }
 

@@ -178,11 +178,8 @@ fn handleSearch(
     // _ = pattern;
     // _ = remaining;
 
-    try stdout.print("Error: Search/Grep functionality is not implemented yet.\n", .{});
-    try stdout.print("Stay tuned for the next release!\n", .{});
-
     if (remaining.len == 0) {
-        std.debug.print("Error: 'match' requires a string to test.\nUsage: lexis \"{s}\" match \"target_string\"\n", .{pattern});
+        std.debug.print("Error: 'search' requires a file to search.\nUsage: lexis \"{s}\" search \"target_string\"\n", .{pattern});
         return;
     }
 
@@ -224,12 +221,5 @@ fn handleSearch(
     const reader = &file_reader.interface;
 
     try search.searchFile(stdout, reader, &min_dfa);
-
-    if (dfa.matches(&min_dfa, target)) {
-        std.debug.print("Matches\n", .{});
-        std.process.exit(0);
-    } else {
-        std.debug.print("No Match\n", .{});
-        std.process.exit(1);
-    }
+    try stdout.flush();
 }
