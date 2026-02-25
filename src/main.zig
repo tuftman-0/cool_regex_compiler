@@ -132,7 +132,7 @@ fn handleMatch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][
         return;
     }
     const target = remaining[0];
-    std.debug.print("Matching \"{s}\" against /{s}/\n", .{target, pattern});
+    // std.debug.print("Matching \"{s}\" against /{s}/\n", .{target, pattern});
 
     var arena: std.heap.ArenaAllocator = .init(allocator);
     defer arena.deinit();
@@ -189,7 +189,7 @@ fn handleSearch(
     defer allocator.free(wrapped_pattern);
 
     const target = remaining[0];
-    std.debug.print("Matching \"{s}\" against /{s}/\n", .{target, wrapped_pattern});
+    // std.debug.print("Matching \"{s}\" against /{s}/\n", .{target, wrapped_pattern});
 
     var arena: std.heap.ArenaAllocator = .init(allocator);
     defer arena.deinit();
