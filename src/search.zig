@@ -9,7 +9,6 @@ const dfa = @import("dfa.zig");
 const MatchIterator = struct {
     reader: *std.Io.Reader,
     machine: *const dfa.DenseDFA,
-    buf: [4096]u8 = undefined,
 
     pub fn next(self: *MatchIterator) !?[]const u8 {
         while (try self.reader.takeDelimiter('\n')) |line| {
