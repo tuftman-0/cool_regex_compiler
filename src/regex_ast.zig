@@ -207,6 +207,11 @@ fn cloneNode(allocator: std.mem.Allocator, n: *const RegexNode) !*RegexNode {
 }
 
 pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []Token) !*RegexNode {
+    if (tokens.len == 0) {
+        const node = try allocator.create(RegexNode);
+        node.* = .{ .epsilon = {} };
+        return node;
+    }
     var op_stack: []Token = try allocator.alloc(Token, tokens.len);
     // errdefer allocator.free(op_stack);
     var op_height: usize = 0;
