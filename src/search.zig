@@ -1,9 +1,6 @@
 const std = @import("std");
 const dfa = @import("dfa.zig");
 
-// a|b is like a or b
-// a* is 0 or more a's
-// a+ is 1 or more a's
 
 
 const MatchIterator = struct {

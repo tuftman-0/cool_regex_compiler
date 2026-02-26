@@ -174,16 +174,12 @@ fn handleSearch(
     var out_buf: [1 << 16]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&out_buf);
     const stdout = &stdout_writer.interface;
-    // _ = allocator;
-    // _ = pattern;
-    // _ = remaining;
 
     if (remaining.len == 0) {
         std.debug.print("Error: 'search' requires a file to search.\nUsage: lexis \"{s}\" search \"target_string\"\n", .{pattern});
         return;
     }
 
-    // const wrapped_pattern = try std.fmt.allocPrint(allocator, ".*{s}.*", .{pattern});
     const wrapped_pattern = try std.mem.concat(allocator, u8, &[_][]const u8{ ".*", pattern, ".*" });
     // std.debug.print("{s}", .{wrapped_pattern});
     defer allocator.free(wrapped_pattern);
