@@ -175,21 +175,38 @@ fn handleSearch(
     var stdout_writer = std.fs.File.stdout().writer(&out_buf);
     const stdout = &stdout_writer.interface;
 
-    if (remaining.len == 0) {
-        std.debug.print("Error: 'search' requires a file to search.\nUsage: lexis \"{s}\" search \"target_string\"\n", .{pattern});
-        return;
-    }
-
-    const wrapped_pattern = try std.mem.concat(allocator, u8, &[_][]const u8{ ".*", pattern, ".*" });
-    // std.debug.print("{s}", .{wrapped_pattern});
-    defer allocator.free(wrapped_pattern);
-
-    const target = remaining[0];
-    // std.debug.print("Matching \"{s}\" against /{s}/\n", .{target, wrapped_pattern});
-
     var arena: std.heap.ArenaAllocator = .init(allocator);
     defer arena.deinit();
     const aa = arena.allocator();
+
+    var anchored_start = false;
+    var anchored_end = false;
+
+    var pat = pattern;
+
+    if (pat.len > 0) {
+        if (pat[0] == '^') {
+            anchored_start = true;
+            pat = pat[1..];
+        }
+
+        if (pat[pat.len - 1] == '$') {
+            anchored_end = true;
+            pat = pat[0 .. pat.len - 1];
+        }
+    }
+
+
+    var wrapped_pattern = pat;
+    if (!anchored_start or !anchored_end) {
+        wrapped_pattern = try std.mem.concat(aa, u8, &[_][]const u8{ ".*", pat, ".*" });
+    }
+    if (anchored_start) wrapped_pattern = wrapped_pattern[2..];
+    if (anchored_end) wrapped_pattern = wrapped_pattern[0..wrapped_pattern.len-2];
+
+
+    std.debug.print("{s}", .{wrapped_pattern});
+    // defer allocator.free(wrapped_pattern);
 
     const tokens = try ast.tokenize(allocator, wrapped_pattern);
     errdefer allocator.free(tokens);
@@ -198,8 +215,6 @@ fn handleSearch(
     const tree = try ast.shuntingYard(aa, ir);
     allocator.free(ir);
     allocator.free(tokens);
-
-    // *TODO* maybe pass stdout to printing functions
 
     var autobot = nfa.NFA{};
     const frag = try nfa.compileNode(aa, tree, &autobot);
@@ -210,12 +225,28 @@ fn handleSearch(
 
     const min_dfa = try dfa.minimize(aa, &dense_dfa);
 
-    // *TODO* make work with multiple files
-    const file = try std.fs.cwd().openFile(target, .{});
+
+    var file: std.fs.File = undefined;
     var reader_buf: [4096]u8 = undefined;
-    var file_reader = file.readerStreaming(&reader_buf);
+    var file_reader: std.fs.File.Reader = undefined;
+
+    if (remaining.len == 0) {
+        file = std.fs.File.stdin();
+        file_reader = file.readerStreaming(&reader_buf);
+    } else {
+        const target = remaining[0];
+        file = try std.fs.cwd().openFile(target, .{});
+        file_reader = file.reader(&reader_buf);
+    }
     const reader = &file_reader.interface;
 
-    try search.searchFile(stdout, reader, &min_dfa);
+    // const wrapped_pattern = try std.fmt.allocPrint(allocator, ".*{s}.*", .{pattern});
+
+    // std.debug.print("Matching \"{s}\" against /{s}/\n", .{target, wrapped_pattern});
+
+
+    // *TODO* make work with multiple files
+
+    try search.searchFile(allocator, stdout, reader, &min_dfa);
     try stdout.flush();
 }
