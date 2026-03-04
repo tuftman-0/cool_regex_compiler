@@ -104,25 +104,31 @@ fn handleDump(allocator: std.mem.Allocator, pattern: []const u8, options: [][]u8
 
     // *TODO* maybe pass stdout to printing functions
     if (dump_ast) try tree.print(stdout, 0);
-    try stdout.flush(); // *TODO* maybe move this to inside function
 
-    if (pipeline < 2) return;
+    if (pipeline < 2) {
+        try stdout.flush();
+        return;
+    }
     var autobot = nfa.NFA{};
     const frag = try nfa.compileNode(aa, tree, &autobot);
     autobot.states.items[frag.accept].is_accept = true;
     if (dump_nfa) try nfa.dumpNFA(stdout, &autobot);
-    try stdout.flush(); // *TODO* maybe move this to inside function
 
-    if (pipeline < 3) return;
+    if (pipeline < 3) {
+        try stdout.flush();
+        return;
+    }
     const sparse_dfa = try dfa.makeDFA(aa, &autobot, frag.start);
     const dense_dfa = try dfa.toDense(aa, &sparse_dfa);
     if (dump_dfa) try dfa.dumpParker(stdout, &dense_dfa, include_dead);
-    try stdout.flush(); // *TODO* maybe move this to inside function
 
-    if (pipeline < 4) return;
+    if (pipeline < 4) {
+        try stdout.flush();
+        return;
+    }
     const min_dfa = try dfa.minimize(aa, &dense_dfa);
     if (dump_min) try dfa.dumpParker(stdout, &min_dfa, include_dead);
-    try stdout.flush(); // *TODO* maybe move this to inside function
+    try stdout.flush();
 }
 
 fn handleMatch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][]u8) !void {
