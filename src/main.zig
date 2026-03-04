@@ -187,30 +187,23 @@ fn handleSearch(
     var anchored_start = false;
     var anchored_end = false;
     var pat = pattern;
-
-    if (pat.len > 0) {
-        if (pat[0] == '^') {
-            anchored_start = true;
-            pat = pat[1..];
-        }
-
-        if (pat[pat.len - 1] == '$') {
-            anchored_end = true;
-            pat = pat[0 .. pat.len - 1];
-        }
+    if (pat.len > 0 and pat[0] == '^') {
+        anchored_start = true;
+        pat = pat[1..];
+    }
+    if (pat.len > 0 and pat[pat.len - 1] == '$') {
+        anchored_end = true;
+        pat = pat[0 .. pat.len - 1];
     }
 
-
-    var wrapped_pattern = pat;
-    if (!anchored_start or !anchored_end) {
-        wrapped_pattern = try std.mem.concat(aa, u8, &[_][]const u8{ ".*", pat, ".*" });
-    }
-    if (anchored_start) wrapped_pattern = wrapped_pattern[2..];
-    if (anchored_end) wrapped_pattern = wrapped_pattern[0..wrapped_pattern.len-2];
-
-
-    std.debug.print("{s}", .{wrapped_pattern});
-    // defer allocator.free(wrapped_pattern);
+    // wrap pattern in wildcards depending on anchors
+    const key: u2 = (@as(u2, @intFromBool(anchored_start)) << 1) | @as(u2, @intFromBool(anchored_end));
+    const wrapped_pattern = switch (key) {
+        0b00 => try std.mem.concat(scratch_build, u8, &.{ ".*", pat, ".*" }),
+        0b01 => try std.mem.concat(scratch_build, u8, &.{ ".*", pat }),
+        0b10 => try std.mem.concat(scratch_build, u8, &.{ pat, ".*" }),
+        0b11 => pat,
+    };
 
     const tokens = try ast.tokenize(allocator, wrapped_pattern);
     errdefer allocator.free(tokens);
