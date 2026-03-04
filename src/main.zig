@@ -5,7 +5,6 @@ const nfa = @import("nfa.zig");
 const dfa = @import("dfa.zig");
 const search = @import("search.zig");
 
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -20,7 +19,7 @@ pub fn main() !void {
     }
 
     const pattern = args[1];
-    
+
     // if no command is provided, default to dump
     const command = if (args.len > 2) args[2] else "dump";
 
@@ -181,7 +180,6 @@ fn handleSearch(
 
     var anchored_start = false;
     var anchored_end = false;
-
     var pat = pattern;
 
     if (pat.len > 0) {
