@@ -59,37 +59,37 @@ pub const PrintOpts = struct {
     show_line_numbers: bool = false,
 };
 
-// fn printMatch(out: *std.Io.Writer, opts: PrintOpts, m: Match) !void {
-//     if (opts.label) |lab| try out.print("{s}:", .{lab});
-//     if (opts.show_line_numbers) try out.print("{d}:", .{m.line_no});
-//     try out.print("{s}\n", .{m.line});
-// }
-
-// pub fn searchFile(
-//     allocator: std.mem.Allocator,
-//     out: *std.Io.Writer,
-//     reader: *std.Io.Reader,
-//     machine: *const dfa.DenseDFA,
-//     opts: PrintOpts,
-// ) !void {
-//     var it = MatchIterator.init(allocator, reader, machine);
-//     defer it.deinit();
-
-//     while (try it.next()) |m| {
-//         try printMatch(out, opts, m);
-//     }
-// }
+fn printMatch(out: *std.Io.Writer, opts: PrintOpts, m: Match) !void {
+    if (opts.label) |lab| try out.print("{s}:", .{lab});
+    if (opts.show_line_numbers) try out.print("{d}:", .{m.line_no});
+    try out.print("{s}\n", .{m.line});
+}
 
 pub fn searchFile(
     allocator: std.mem.Allocator,
-    stdout: *std.Io.Writer,
+    out: *std.Io.Writer,
     reader: *std.Io.Reader,
-    machine: *const dfa.DenseDFA
+    machine: *const dfa.DenseDFA,
+    opts: PrintOpts,
 ) !void {
-    var iterator = MatchIterator.init(allocator, reader, machine);
-    defer iterator.deinit();
-    while (try iterator.next()) |match| {
-        try stdout.print("{s}\n", .{match.line});
-        // try stdout.print("{d}:{s}\n", .{match.line_no, match.line});
+    var it = MatchIterator.init(allocator, reader, machine);
+    defer it.deinit();
+
+    while (try it.next()) |m| {
+        try printMatch(out, opts, m);
     }
 }
+
+// pub fn searchFile(
+//     allocator: std.mem.Allocator,
+//     stdout: *std.Io.Writer,
+//     reader: *std.Io.Reader,
+//     machine: *const dfa.DenseDFA
+// ) !void {
+//     var iterator = MatchIterator.init(allocator, reader, machine);
+//     defer iterator.deinit();
+//     while (try iterator.next()) |match| {
+//         try stdout.print("{s}\n", .{match.line});
+//         // try stdout.print("{d}:{s}\n", .{match.line_no, match.line});
+//     }
+// }

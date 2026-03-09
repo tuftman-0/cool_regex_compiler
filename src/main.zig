@@ -171,19 +171,22 @@ fn handleMatch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][
     }
 }
 
-fn handleSearch(
-    allocator: std.mem.Allocator,
-    pattern: []const u8,
-    remaining: [][]u8
-) !void {
+fn handleSearch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][]u8) !void {
     var out_buf: [1 << 16]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&out_buf);
     const stdout = &stdout_writer.interface;
 
-    var arena: std.heap.ArenaAllocator = .init(allocator);
-    defer arena.deinit();
-    const aa = arena.allocator();
+    var scratch_build_arena: std.heap.ArenaAllocator = .init(allocator);
+    errdefer scratch_build_arena.deinit();
+    var scratch_minimize_arena: std.heap.ArenaAllocator = .init(allocator);
+    errdefer scratch_minimize_arena.deinit();
+    var final_arena: std.heap.ArenaAllocator = .init(allocator);
+    defer final_arena.deinit();
+    const scratch_build = scratch_build_arena.allocator();
+    const scratch_min = scratch_minimize_arena.allocator();
+    const final = final_arena.allocator();
 
+    // detect and trim anchors from pattern
     var anchored_start = false;
     var anchored_end = false;
     var pat = pattern;
@@ -205,45 +208,45 @@ fn handleSearch(
         0b11 => pat,
     };
 
-    const tokens = try ast.tokenize(allocator, wrapped_pattern);
-    errdefer allocator.free(tokens);
-    const ir = try ast.addConcat(allocator, tokens);
-    errdefer allocator.free(ir);
-    const tree = try ast.shuntingYard(aa, ir);
-    allocator.free(ir);
-    allocator.free(tokens);
+    const tokens = try ast.tokenize(scratch_build, wrapped_pattern);
+    const ir = try ast.addConcat(scratch_build, tokens);
+    const tree = try ast.shuntingYard(scratch_build, ir);
 
     var autobot = nfa.NFA{};
-    const frag = try nfa.compileNode(aa, tree, &autobot);
+    const frag = try nfa.compileNode(scratch_build, tree, &autobot);
     autobot.states.items[frag.accept].is_accept = true;
 
-    const sparse_dfa = try dfa.makeDFA(aa, &autobot, frag.start);
-    const dense_dfa = try dfa.toDense(aa, &sparse_dfa);
+    const sparse_dfa = try dfa.makeDFA(scratch_build, &autobot, frag.start);
+    const dense_dfa = try dfa.toDense(scratch_min, &sparse_dfa);
+    scratch_build_arena.deinit();
 
-    const min_dfa = try dfa.minimize(aa, &dense_dfa);
-
+    const min_dfa = try dfa.minimize(final, &dense_dfa);
+    scratch_minimize_arena.deinit();
 
     var file: std.fs.File = undefined;
     var reader_buf: [4096]u8 = undefined;
     var file_reader: std.fs.File.Reader = undefined;
 
-    if (remaining.len == 0) {
-        file = std.fs.File.stdin();
-        file_reader = file.readerStreaming(&reader_buf);
-    } else {
-        const target = remaining[0];
-        file = try std.fs.cwd().openFile(target, .{});
-        file_reader = file.reader(&reader_buf);
+    var opts: search.PrintOpts = .{ .label = null, .show_line_numbers = false };
+
+    var rem = remaining;
+    var dash_buf: [1]u8 = .{'-'};
+    var rem_buf: [1][]u8 = .{dash_buf[0..]};
+    if (rem.len == 0) rem = &rem_buf;
+
+    for (rem) |arg| {
+        if (arg.len == 1 and arg[0] == '-') {
+            file = std.fs.File.stdin();
+            file_reader = file.readerStreaming(&reader_buf);
+            if (rem.len > 1) opts.label = "(standard input)";
+        } else {
+            file = try std.fs.cwd().openFile(arg, .{});
+            file_reader = file.reader(&reader_buf);
+            if (rem.len > 1) opts.label = arg;
+        }
+        const reader = &file_reader.interface;
+        try search.searchFile(allocator, stdout, reader, &min_dfa, opts);
     }
-    const reader = &file_reader.interface;
 
-    // const wrapped_pattern = try std.fmt.allocPrint(allocator, ".*{s}.*", .{pattern});
-
-    // std.debug.print("Matching \"{s}\" against /{s}/\n", .{target, wrapped_pattern});
-
-
-    // *TODO* make work with multiple files
-
-    try search.searchFile(allocator, stdout, reader, &min_dfa);
     try stdout.flush();
 }
