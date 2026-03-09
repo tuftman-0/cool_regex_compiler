@@ -399,10 +399,6 @@ fn printState(stdout: anytype, s: usize, dead: usize, show_dead: bool) !void {
 }
 
 pub fn dumpParker(stdout: *std.Io.Writer, dfa: *const DenseDFA, show_dead: bool) !void {
-    // var stdout_buffer: [1024]u8 = undefined;
-    // var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    // const stdout = &stdout_writer.interface;
-
     const n = dfa.accept.len;
     const dead: usize = @as(usize, dfa.dead);
 
