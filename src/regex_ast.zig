@@ -141,6 +141,24 @@ pub const RegexNode = union(RegexTag) {
             .any => try stdout.print("Any\n", .{}),
         }
     }
+
+    pub fn deinit(self: *RegexNode, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .char, .epsilon, .any => {},
+            .star => |child| {
+                child.deinit(allocator);
+            },
+            .concat => |pair| {
+                pair.left.deinit(allocator);
+                pair.right.deinit(allocator);
+            },
+            .choice => |pair| {
+                pair.left.deinit(allocator);
+                pair.right.deinit(allocator);
+            },
+        }
+        allocator.destroy(self);
+    }
 };
 
 
@@ -213,10 +231,10 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []Token) !*RegexNode {
         return node;
     }
     var op_stack: []Token = try allocator.alloc(Token, tokens.len);
-    // errdefer allocator.free(op_stack);
+    defer allocator.free(op_stack);
     var op_height: usize = 0;
     var node_stack: []*RegexNode = try allocator.alloc(*RegexNode, tokens.len);
-    // errdefer allocator.free(node_stack);
+    defer allocator.free(node_stack);
     var node_height: usize = 0;
 
     for (tokens) |token| {
