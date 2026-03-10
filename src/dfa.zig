@@ -633,7 +633,11 @@ fn splitBlockFromMid(
 
 // *TODO* switch to using a scratch arena for stuff used during construction
 // *TODO* make bookkeeping struct to manage all the stuff going on here
-pub fn minimize(allocator: std.mem.Allocator, dfa: *const DenseDFA) !DenseDFA {
+pub fn minimize(
+    allocator: std.mem.Allocator,
+    // scratch: std.mem.Allocator,
+    dfa: *const DenseDFA
+) !DenseDFA {
     const n: usize = dfa.accept.len;
     std.debug.assert(n > 0);
     // const dead: StateId = @intCast(n - 1);
