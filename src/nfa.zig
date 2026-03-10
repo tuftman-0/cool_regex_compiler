@@ -1,7 +1,7 @@
 const std = @import("std");
 const ast = @import("regex_ast.zig");
 
-pub const StateId = u16; // or u32
+pub const StateId = u16; // indices for states in NFA and DFA (determines max number of states)
 
 pub const TransitionTag = enum { ch, any };
 

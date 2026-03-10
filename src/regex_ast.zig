@@ -6,10 +6,10 @@ pub const Token = union(enum) {
     any: void,      // The '.' wildcard (any character in alphabet)
     star: void,     // '*'
     plus: void,     // '+'
-    choice: void,     // '|'
-    concat: void,
-    lparen: void,  // '('
-    rparen: void,  // ')'
+    choice: void,   // '|'
+    concat: void,   // '.'
+    lparen: void,   // '('
+    rparen: void,   // ')'
     // eof: void,
 
     pub fn isEnder(self: Token) bool {
@@ -249,7 +249,7 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []Token) !*RegexNode {
                 node.* = .{ .star = node_stack[node_height - 1] };
                 node_stack[node_height-1] = node;
             },
-            .plus => {
+            .plus => { // r+ implemented as rr* instead of adding separate behaviour
                 if (node_height <= 0) { return error.SyntaxError; }
                 const r:       *RegexNode = node_stack[node_height - 1];
                 const r_clone: *RegexNode = try r.clone(allocator);
