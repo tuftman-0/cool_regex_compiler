@@ -142,6 +142,25 @@ pub const RegexNode = union(RegexTag) {
         }
     }
 
+    pub fn clone(self: *const RegexNode, allocator: std.mem.Allocator) !*RegexNode {
+        const out = try allocator.create(RegexNode);
+        out.* = switch (self.*) {
+            .char    => |c| .{ .char = c },
+            .epsilon => .{ .epsilon = {} },
+            .any     => .{ .any = {} },
+            .star    => |child| .{ .star = try child.clone(allocator) },
+            .concat  => |p| .{ .concat = .{
+                .left = try p.left.clone(allocator),
+                .right = try p.right.clone(allocator),
+            }},
+            .choice  => |p| .{ .choice = .{
+                .left = try p.left.clone(allocator),
+                .right = try p.right.clone(allocator),
+            }},
+        };
+        return out;
+    }
+
     pub fn deinit(self: *RegexNode, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .char, .epsilon, .any => {},
@@ -205,25 +224,6 @@ fn popAndBuildBinaryNode(
     node_height.* += 1;
 }
 
-fn cloneNode(allocator: std.mem.Allocator, n: *const RegexNode) !*RegexNode {
-    const out = try allocator.create(RegexNode);
-    out.* = switch (n.*) {
-        .char => |c| .{ .char = c },
-        .epsilon => .{ .epsilon = {} },
-        .any => .{ .any = {} },
-        .star => |child| .{ .star = try cloneNode(allocator, child) },
-        .concat => |p| .{ .concat = .{
-            .left = try cloneNode(allocator, p.left),
-            .right = try cloneNode(allocator, p.right),
-        }},
-        .choice => |p| .{ .choice = .{
-            .left = try cloneNode(allocator, p.left),
-            .right = try cloneNode(allocator, p.right),
-        }},
-    };
-    return out;
-}
-
 pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []Token) !*RegexNode {
     if (tokens.len == 0) {
         const node = try allocator.create(RegexNode);
@@ -252,7 +252,7 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []Token) !*RegexNode {
             .plus => {
                 if (node_height <= 0) { return error.SyntaxError; }
                 const r:       *RegexNode = node_stack[node_height - 1];
-                const r_clone: *RegexNode = try cloneNode(allocator, r);
+                const r_clone: *RegexNode = try r.clone(allocator);
                 const star:    *RegexNode = try allocator.create(RegexNode);
                 const node:    *RegexNode = try allocator.create(RegexNode);
                 star.* = .{ .star = r_clone };
