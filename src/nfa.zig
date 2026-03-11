@@ -110,15 +110,31 @@ pub fn compileNode(allocator: std.mem.Allocator, node: *const ast.RegexNode, nfa
             try nfa.addEps(allocator, left_frag.accept, accept);
             return .{ .start = start, .accept = accept };
         },
-        .star => |child_node| {
+        .star => |child| {
             const start = try nfa.newState(allocator);
             const accept = try nfa.newState(allocator);
-            const child_ast = try compileNode(allocator, child_node, nfa);
+            const child_nfa = try compileNode(allocator, child, nfa);
             try nfa.addEps(allocator, start, accept);
-            try nfa.addEps(allocator, start, child_ast.start);
-            try nfa.addEps(allocator, child_ast.accept, child_ast.start);
-            try nfa.addEps(allocator, child_ast.accept, accept);
+            try nfa.addEps(allocator, start, child_nfa.start);
+            try nfa.addEps(allocator, child_nfa.accept, child_nfa.start);
+            try nfa.addEps(allocator, child_nfa.accept, accept);
             return .{ .start = start, .accept = accept };
+        },
+        .plus => |child| {
+            const first = try compileNode(allocator, child, nfa);
+
+            const loop_start = try nfa.newState(allocator);
+            const loop_accept = try nfa.newState(allocator);
+
+            const repeated = try compileNode(allocator, child, nfa);
+
+            try nfa.addEps(allocator, first.accept, loop_start);
+            try nfa.addEps(allocator, loop_start, repeated.start);
+            try nfa.addEps(allocator, repeated.accept, repeated.start);
+            try nfa.addEps(allocator, repeated.accept, loop_accept);
+            try nfa.addEps(allocator, loop_start, loop_accept);
+
+            return .{ .start = first.start, .accept = loop_accept };
         },
     };
 }

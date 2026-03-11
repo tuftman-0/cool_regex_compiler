@@ -101,6 +101,7 @@ pub const RegexTag = enum {
     concat,
     choice,
     star,
+    plus,
 };
 
 pub const RegexNode = union(RegexTag) {
@@ -110,6 +111,7 @@ pub const RegexNode = union(RegexTag) {
     concat: struct { left: *RegexNode, right: *RegexNode },
     choice: struct { left: *RegexNode, right: *RegexNode },
     star: *RegexNode,
+    plus: *RegexNode,
 
     pub fn print(self: RegexNode, stdout: *std.Io.Writer, indent: usize) !void {
         // var out_buf: [1 << 16]u8 = undefined;
@@ -126,6 +128,10 @@ pub const RegexNode = union(RegexTag) {
             .epsilon => try stdout.print("Epsilon\n", .{}),
             .star => |child| {
                 try stdout.print("Star:\n", .{});
+                try child.print(stdout, indent + 1);
+            },
+            .plus => |child| {
+                try stdout.print("Plus:\n", .{});
                 try child.print(stdout, indent + 1);
             },
             .concat => |pair| {
@@ -149,6 +155,7 @@ pub const RegexNode = union(RegexTag) {
             .epsilon => .{ .epsilon = {} },
             .any     => .{ .any = {} },
             .star    => |child| .{ .star = try child.clone(allocator) },
+            .plus    => |child| .{ .plus = try child.clone(allocator) },
             .concat  => |p| .{ .concat = .{
                 .left = try p.left.clone(allocator),
                 .right = try p.right.clone(allocator),
@@ -197,6 +204,30 @@ fn mkChoice(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !
     return parent;
 }
 
+fn mkStar(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
+    return switch (child.*) {
+        .star, .plus, .epsilon => child,
+        else => blk: {
+            const node = try allocator.create(RegexNode);
+            node.* = .{ .star = child };
+            break :blk node;
+        },
+    };
+}
+
+fn mkPlus(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
+    return switch (child.*) {
+        .star, .plus, .epsilon => child,
+        // .star => child,
+        // .plus => child,
+        // .epsilon => child,
+        else => blk: {
+            const node = try allocator.create(RegexNode);
+            node.* = .{ .plus = child };
+            break :blk node;
+        },
+    };
+}
 
 fn popAndBuildBinaryNode(
     allocator: std.mem.Allocator,
@@ -224,6 +255,7 @@ fn popAndBuildBinaryNode(
     node_height.* += 1;
 }
 
+
 pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []Token) !*RegexNode {
     if (tokens.len == 0) {
         const node = try allocator.create(RegexNode);
@@ -245,19 +277,11 @@ pub fn shuntingYard(allocator: std.mem.Allocator, tokens: []Token) !*RegexNode {
             },
             .star => {
                 if (node_height <= 0) { return error.SyntaxError; }
-                const node: *RegexNode = try allocator.create(RegexNode);
-                node.* = .{ .star = node_stack[node_height - 1] };
-                node_stack[node_height-1] = node;
+                node_stack[node_height - 1] = try mkStar(allocator, node_stack[node_height - 1]);
             },
-            .plus => { // r+ implemented as rr* instead of adding separate behaviour
+            .plus => {
                 if (node_height <= 0) { return error.SyntaxError; }
-                const r:       *RegexNode = node_stack[node_height - 1];
-                const r_clone: *RegexNode = try r.clone(allocator);
-                const star:    *RegexNode = try allocator.create(RegexNode);
-                const node:    *RegexNode = try allocator.create(RegexNode);
-                star.* = .{ .star = r_clone };
-                node.* = .{ .concat = .{ .left = r, .right = star } };
-                node_stack[node_height - 1] = node;
+                node_stack[node_height - 1] = try mkPlus(allocator, node_stack[node_height - 1]);
             },
             .concat, .choice, .rparen => {
                 while (op_height > 0 and op_stack[op_height - 1].precedence() >= token.precedence()) {
