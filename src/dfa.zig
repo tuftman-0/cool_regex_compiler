@@ -95,10 +95,14 @@ fn groupByteMoves(
                 buckets.sets[x.ch].set(x.to);
             },
             .any => |x| {
-                // ANY matches all bytes except '\n'
                 for (0..256) |cu| {
                     const c: u8 = @intCast(cu);
-                    if (c == '\n') continue;
+                    // might limit characters
+                    // if (c != '\n') continue;
+                    // switch (c) { // remove control characters (good for dumping reasonably) (might add flag to control)
+                    //     0x00...0x1F, 0x7F...0xFF => continue,
+                    //     else => {},
+                    // }
 
                     if (buckets.sets[c].count() == 0) try buckets.used.append(allocator, c);
                     buckets.sets[c].set(x.to);
