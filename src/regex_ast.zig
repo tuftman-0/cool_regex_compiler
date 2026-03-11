@@ -168,6 +168,39 @@ pub const RegexNode = union(RegexTag) {
         return out;
     }
 
+    pub fn equals(self: *const RegexNode, other: *const RegexNode) bool {
+        return switch (self.*) {
+            .epsilon => switch (other.*) {
+                .epsilon => true,
+                else => false,
+            },
+            .any => switch (other.*) {
+                .any => true,
+                else => false,
+            },
+            .char => |char1| switch (other.*) {
+                .char => |char2| char1 == char2,
+                else => false,
+            },
+            .star => |child1| switch (other.*) {
+                .star => |child2| child1.equals(child2),
+                else => false,
+            },
+            .plus => |child1| switch (other.*) {
+                .star => |child2| child1.equals(child2),
+                else => false,
+            },
+            .concat => |p1| switch (other.*) {
+                .concat => |p2| p1.left.equals(p2.left) and p1.right.equals(p2.right),
+                else => false,
+            },
+            .choice => |p1| switch (other.*) {
+                .concat => |p2| p1.left.equals(p2.left) and p1.right.equals(p2.right),
+                else => false,
+            },
+        };
+    }
+
     pub fn deinit(self: *RegexNode, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .char, .epsilon, .any => {},
