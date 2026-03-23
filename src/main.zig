@@ -36,6 +36,8 @@ pub fn main() !void {
     } else if (std.mem.eql(u8, command, "search") or std.mem.eql(u8, command, "grep")) {
         // try handleSearch();
         try handleSearch(allocator, pattern, slice_args[3..]);
+    } else if (std.mem.eql(u8, command, "equals")) {
+        try handleEquals(allocator, pattern, slice_args[3..]);
     } else {
         std.debug.print("Unknown command: {s}\n", .{command});
         return printHelp();
@@ -48,6 +50,7 @@ fn printHelp() void {
         \\
         \\Commands:
         \\  match <string>       Check if string matches the regex (default)
+        \\  equals <expression>  Check if two expressions are equivalent
         \\  dump [options]       Output internal structures (AST, NFA, DFA)
         \\  search/grep <files>  [Not Implemented] Search files for pattern
         \\
@@ -215,6 +218,28 @@ fn handleMatch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][
         std.debug.print("No Match\n", .{});
         std.process.exit(1);
     }
+}
+
+fn handleEquals(allocator: std.mem.Allocator, pattern_A: [] const u8, remaining: [][]u8) !void {
+    const pattern_B = remaining[0];
+    var out_buf: [1 << 16]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &stdout_writer.interface;
+
+    // var arena: std.heap.ArenaAllocator = .init(allocator);
+    // defer arena.deinit();
+    // const aa = arena.allocator();
+    const aa = allocator;
+
+
+    const dfa_A = try buildMinDfaFromPattern(aa, pattern_A);
+    defer dfa_A.deinit(aa);
+    const dfa_B = try buildMinDfaFromPattern(aa, pattern_B);
+    defer dfa_B.deinit(aa);
+
+    try stdout.print("{}\n", .{dfa.equals(allocator, &dfa_A, &dfa_B)});
+    try stdout.flush();
+
 }
 
 fn handleSearch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][]u8) !void {
