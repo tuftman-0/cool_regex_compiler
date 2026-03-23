@@ -195,7 +195,8 @@ pub const RegexNode = union(RegexTag) {
                 else => false,
             },
             .choice => |p1| switch (other.*) {
-                .concat => |p2| p1.left.equals(p2.left) and p1.right.equals(p2.right),
+                .concat => |p2| (p1.left.equals(p2.left) and p1.right.equals(p2.right)) or
+                                (p1.left.equals(p2.right) and p1.right.equals(p2.left)),
                 else => false,
             },
         };
@@ -232,6 +233,8 @@ fn mkConcat(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !
 }
 
 fn mkChoice(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !*RegexNode {
+    // if (left.*. == right.*) return left; // shallow equality to detect simple stuff
+    if (left.equals(right)) return left; // can do full equality but it's expensive
     const parent = try allocator.create(RegexNode);
     parent.* = .{ .choice = .{ .left = left, .right = right } };
     return parent;
@@ -239,6 +242,7 @@ fn mkChoice(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !
 
 fn mkStar(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
     return switch (child.*) {
+        // if child is a* a+ or epsilon adding a star won't change anything
         .star, .plus, .epsilon => child,
         else => blk: {
             const node = try allocator.create(RegexNode);
@@ -250,10 +254,8 @@ fn mkStar(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
 
 fn mkPlus(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
     return switch (child.*) {
+        // if child is a* a+ or epsilon adding a plus won't change anything
         .star, .plus, .epsilon => child,
-        // .star => child,
-        // .plus => child,
-        // .epsilon => child,
         else => blk: {
             const node = try allocator.create(RegexNode);
             node.* = .{ .plus = child };
