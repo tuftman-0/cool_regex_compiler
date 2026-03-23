@@ -92,19 +92,7 @@ pub fn addConcat(allocator: std.mem.Allocator, input: []Token) ![]Token {
     return try tokens.toOwnedSlice(allocator);
 }
 
-
-
-pub const RegexTag = enum {
-    epsilon,
-    char,
-    any,
-    concat,
-    choice,
-    star,
-    plus,
-};
-
-pub const RegexNode = union(RegexTag) {
+pub const RegexNode = union(enum) {
     epsilon: void,
     char: u8,
     any: void,
