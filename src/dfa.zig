@@ -19,12 +19,6 @@ pub const DFA = struct {
     }
 };
 
-fn bitsetClearAndCopy(out: *BitSet, src: *const BitSet) void {
-    out.unsetAll();
-    var it = src.iterator(.{});
-    while (it.next()) |idx| out.set(idx);
-}
-
 /// out = epsilon-closure(input)
 fn epsilonClosure(
     allocator: std.mem.Allocator,
