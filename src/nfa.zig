@@ -73,6 +73,7 @@ pub const Frag = struct {
     accept: StateId,
 };
 
+// **TODO** make this an NFA method
 pub fn compileNode(allocator: std.mem.Allocator, node: *const ast.RegexNode, nfa: *NFA) !Frag {
     return switch (node.*) {
         .epsilon => {
