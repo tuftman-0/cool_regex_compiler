@@ -147,37 +147,49 @@ fn cloneBitSet(allocator: std.mem.Allocator, n_bits: usize, src: *const BitSet) 
     return dst;
 }
 
-pub fn makeDFA(
+pub fn makeDFAWithScratch(
     allocator: std.mem.Allocator,
+    scratch_allocator: std.mem.Allocator,
     nfa: *const NFA,
     nfa_start: StateId,
 ) !DFA {
-    var scratch_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer scratch_arena.deinit();
-    const scratch_allocator = scratch_arena.allocator();
     const N = nfa.states.items.len;
 
     // start_set = epsilon-closure({nfa_start})
     var singleton = try BitSet.initEmpty(scratch_allocator, N);
+    defer singleton.deinit(scratch_allocator);
     singleton.set(nfa_start);
 
     var start_set = try BitSet.initEmpty(scratch_allocator, N);
+    defer start_set.deinit(scratch_allocator);
     try epsilonClosure(scratch_allocator, nfa, &singleton, &start_set);
 
     var tmp_closure = try BitSet.initEmpty(scratch_allocator, N);
+    defer tmp_closure.deinit(scratch_allocator);
 
     var buckets: Buckets = .{ .sets = undefined };
     try buckets.init(scratch_allocator, N);
-    // try bucketsInit(scratch_allocator, &buckets, N);
+    defer buckets.deinit(scratch_allocator);
 
     // DFA storage
     var dfa_sets = std.ArrayList(BitSet){};
+    defer {
+        for (dfa_sets.items) |*set| set.deinit(scratch_allocator);
+        dfa_sets.deinit(scratch_allocator);
+    }
+
     var edges = std.ArrayList(std.ArrayList(Edge)){};
+    defer edges.deinit(scratch_allocator);
+
     var accept = std.ArrayList(bool){};
+    defer accept.deinit(scratch_allocator);
 
     // seen map: encoded set -> dfa_state_id
     var seen = std.StringHashMap(StateId).init(scratch_allocator);
+    defer seen.deinit();
+
     var queue = std.ArrayList(StateId){};
+    defer queue.deinit(scratch_allocator);
 
     // add start DFA state (id 0)
     const start_id: StateId = 0;
@@ -186,9 +198,7 @@ pub fn makeDFA(
         try dfa_sets.append(scratch_allocator, owned_set);
 
         try edges.append(scratch_allocator, .{});
-        // try edges.append(allocator, .{});
         try accept.append(scratch_allocator, isAccepting(nfa, &owned_set));
-        // try accept.append(allocator, isAccepting(nfa, &owned_set));
 
         const key = try encodeSetKey(scratch_allocator, &owned_set);
         try seen.put(key, start_id);
@@ -211,30 +221,24 @@ pub fn makeDFA(
             var T_id: StateId = undefined;
 
             if (!gop.found_existing) {
-                // new DFA state
                 T_id = @intCast(dfa_sets.items.len);
 
                 const owned = try cloneBitSet(scratch_allocator, N, &tmp_closure);
                 try dfa_sets.append(scratch_allocator, owned);
 
                 try edges.append(scratch_allocator, .{});
-                // try edges.append(allocator, .{});
                 try accept.append(scratch_allocator, isAccepting(nfa, &owned));
-                // try accept.append(allocator, isAccepting(nfa, &owned));
 
                 gop.value_ptr.* = T_id;
                 try queue.append(scratch_allocator, T_id);
             } else {
-                // already seen; free the key we just allocated (since map kept old key)
                 T_id = gop.value_ptr.*;
             }
 
-            // try edges.items[S_id].append(scratch_allocator, .{ .ch = ch, .to = T_id });
             try edges.items[S_id].append(allocator, .{ .ch = ch, .to = T_id });
         }
     }
 
-    // finalize into DFA struct (owned slices)
     const accept_slice = try allocator.alloc(bool, accept.items.len);
     @memcpy(accept_slice, accept.items);
 
@@ -245,9 +249,17 @@ pub fn makeDFA(
         .start = start_id,
         .accept = accept_slice,
         .edges = edges_slice,
-        // .accept = accept.items,
-        // .edges = edges.items,
     };
+}
+
+pub fn makeDFA(
+    allocator: std.mem.Allocator,
+    nfa: *const NFA,
+    nfa_start: StateId,
+) !DFA {
+    var scratch_arena = std.heap.ArenaAllocator.init(allocator);
+    defer scratch_arena.deinit();
+    return try makeDFAWithScratch(allocator, scratch_arena.allocator(), nfa, nfa_start);
 }
 
 pub fn dumpDFA(dfa: *const DFA) void {
@@ -268,9 +280,14 @@ pub const DenseDFA = struct {
     next: []StateId, // len = num_states * 256
     dead: StateId,
 
-    pub fn deinit(self: *DenseDFA, a: std.mem.Allocator) void {
+    pub fn deinit(self: *const DenseDFA, a: std.mem.Allocator) void {
         a.free(self.next);
         a.free(self.accept);
+    }
+
+    pub fn nextState(self: *const DenseDFA, state: StateId, transition: usize) StateId {
+        return self.next[@as(usize, state) * 256 + transition];
+
     }
 
 
@@ -402,6 +419,13 @@ fn printState(stdout: anytype, s: usize, dead: usize, show_dead: bool) !void {
     }
 }
 
+fn printByte(stdout: *std.Io.Writer, byte: u8) !void {
+    switch (byte) {
+        0x00...0x1F, 0x7F...0xFF => try stdout.print("0x{X}", .{byte}),
+        else => try stdout.print("{c}", .{byte}),
+    }
+}
+
 pub fn dumpParker(stdout: *std.Io.Writer, dfa: *const DenseDFA, show_dead: bool) !void {
     const n = dfa.accept.len;
     const dead: usize = @as(usize, dfa.dead);
@@ -434,7 +458,10 @@ pub fn dumpParker(stdout: *std.Io.Writer, dfa: *const DenseDFA, show_dead: bool)
 
     try stdout.print("E = {{", .{});
     for (0..256) |ch_usize| {
-        if (used[ch_usize]) try stdout.print("{c}, ", .{@as(u8, @intCast(ch_usize))});
+        if (used[ch_usize]) {
+            try printByte(stdout, @intCast(ch_usize));
+            try stdout.print(", ", .{});
+        }
     }
     try stdout.print("}}\n", .{});
 
@@ -474,12 +501,18 @@ pub fn dumpParker(stdout: *std.Io.Writer, dfa: *const DenseDFA, show_dead: bool)
                 if (show_dead) {
                     try stdout.print("d(", .{});
                     try printState(stdout, s, dead, true);
-                    try stdout.print(", {c}) = dead\n", .{@as(u8, @intCast(ch_usize))});
+                    // try stdout.print(", {c}) = dead\n", .{@as(u8, @intCast(ch_usize))});
+                    try stdout.print(", ", .{});
+                    try printByte(stdout, @intCast(ch_usize));
+                    try stdout.print(") = dead\n", .{});
                 }
             } else {
                 try stdout.print("d(", .{});
                 try printState(stdout, s, dead, show_dead and dead_reachable);
-                try stdout.print(", {c}) = ", .{@as(u8, @intCast(ch_usize))});
+                // try stdout.print(", {c}) = ", .{@as(u8, @intCast(ch_usize))});
+                try stdout.print(", ", .{});
+                try printByte(stdout, @intCast(ch_usize));
+                try stdout.print(") = ", .{});
                 try printState(stdout, tu, dead, show_dead and dead_reachable);
                 try stdout.print("\n", .{});
             }
@@ -637,17 +670,15 @@ fn splitBlockFromMid(
 
 // *TODO* switch to using a scratch arena for stuff used during construction
 // *TODO* make bookkeeping struct to manage all the stuff going on here
-pub fn minimize(
+pub fn minimizeWithScratch(
     allocator: std.mem.Allocator,
-    // scratch: std.mem.Allocator,
-    dfa: *const DenseDFA
+    scratch: std.mem.Allocator,
+    dfa: *const DenseDFA,
 ) !DenseDFA {
     const n: usize = dfa.accept.len;
     std.debug.assert(n > 0);
-    // const dead: StateId = @intCast(n - 1);
     const dead = dfa.dead;
 
-    // 0) used alphabet (non-dead -> non-dead)
     var used: [256]bool = [_]bool{false} ** 256;
     var count: usize = 0;
     var char_buffer: [256]u8 = undefined;
@@ -665,31 +696,28 @@ pub fn minimize(
     }
     const chars: []const u8 = char_buffer[0..count];
 
-    // 1) build predecesor lists for each state and each char pred[ci*n + t] = list of s with delta(s, chars[ci]) = t
-    var pred: []std.ArrayList(StateId) = try allocator.alloc(std.ArrayList(StateId), chars.len * n);
+    var pred: []std.ArrayList(StateId) = try scratch.alloc(std.ArrayList(StateId), chars.len * n);
+    defer scratch.free(pred);
     for (pred) |*lst| lst.* = .{};
+    defer for (pred) |*lst| lst.deinit(scratch);
 
-    // include dead state as a normal state in preds
     for (chars, 0..) |ch, ci| {
         const ch_usize: usize = @as(usize, ch);
         for (0..n) |s_usize| {
             const t: StateId = dfa.next[s_usize * 256 + ch_usize];
-            try pred[ci * n + @as(usize, t)].append(allocator, @intCast(s_usize));
+            try pred[ci * n + @as(usize, t)].append(scratch, @intCast(s_usize));
         }
     }
 
-    // 2) Partition structure
-    // block_states: permutation of states
-    // block_ranges: ranges into block_states
-    // block_of[s]:  block id
-    // pos[s]:       index in block_states
-    var block_states = try allocator.alloc(StateId, n);
-    var pos = try allocator.alloc(usize, n);
-    var block_of = try allocator.alloc(usize, n);
+    var block_states = try scratch.alloc(StateId, n);
+    defer scratch.free(block_states);
+    var pos = try scratch.alloc(usize, n);
+    defer scratch.free(pos);
+    var block_of = try scratch.alloc(usize, n);
+    defer scratch.free(block_of);
 
     for (0..n) |i| block_states[i] = @intCast(i);
 
-    // initial partition: accepting to front
     var k: usize = 0;
     for (0..n) |idx| {
         const s = block_states[idx];
@@ -701,18 +729,20 @@ pub fn minimize(
         }
     }
 
-    // rebuild pos after partition
     for (0..n) |i| {
         const s = block_states[i];
         pos[@as(usize, s)] = i;
     }
 
     var block_ranges = std.ArrayList(Range){};
+    defer block_ranges.deinit(scratch);
     var in_work = std.ArrayList(bool){};
+    defer in_work.deinit(scratch);
     var hit_count = std.ArrayList(usize){};
-    var mark_block = std.ArrayList(Epoch){}; // epoch tag for touched blocks
+    defer hit_count.deinit(scratch);
+    var mark_block = std.ArrayList(Epoch){};
+    defer mark_block.deinit(scratch);
 
-    // helper to append block metadata in sync
     const AppendBlock = struct {
         fn add(
             a: std.mem.Allocator,
@@ -731,10 +761,9 @@ pub fn minimize(
         }
     };
 
-    if (k > 0) _ = try AppendBlock.add(allocator, &block_ranges, &in_work, &hit_count, &mark_block, .{ .start = 0, .end = k });
-    if (k < n) _ = try AppendBlock.add(allocator, &block_ranges, &in_work, &hit_count, &mark_block, .{ .start = k, .end = n });
+    if (k > 0) _ = try AppendBlock.add(scratch, &block_ranges, &in_work, &hit_count, &mark_block, .{ .start = 0, .end = k });
+    if (k < n) _ = try AppendBlock.add(scratch, &block_ranges, &in_work, &hit_count, &mark_block, .{ .start = k, .end = n });
 
-    // fill block_of from ranges
     for (block_ranges.items, 0..) |r, bid| {
         for (r.start..r.end) |idx| {
             const s = block_states[idx];
@@ -742,38 +771,36 @@ pub fn minimize(
         }
     }
 
-    // 3) Worklist init: push smaller of the initial blocks (classic Hopcroft)
     var work = std.ArrayList(usize){};
+    defer work.deinit(scratch);
     if (block_ranges.items.len == 1) {
-        try pushWork(allocator, &work, in_work.items, 0);
+        try pushWork(scratch, &work, in_work.items, 0);
     } else {
         const s0 = block_ranges.items[0].end - block_ranges.items[0].start;
         const s1 = block_ranges.items[1].end - block_ranges.items[1].start;
         const first: usize = if (s0 <= s1) 0 else 1;
-        try pushWork(allocator, &work, in_work.items, first);
+        try pushWork(scratch, &work, in_work.items, first);
     }
 
-    // 4) Epoch marking for X=pre(A,ch) and touched blocks
-    var mark_state = try allocator.alloc(Epoch, n);
+    var mark_state = try scratch.alloc(Epoch, n);
+    defer scratch.free(mark_state);
     @memset(mark_state, 0);
     var epoch_state: Epoch = 1;
     var epoch_block: Epoch = 1;
 
     var touched_blocks = std.ArrayList(usize){};
+    defer touched_blocks.deinit(scratch);
 
-    // 5) Hopcroft main loop
     while (work.pop()) |A| {
         in_work.items[A] = false;
 
         const rA = block_ranges.items[A];
 
         for (chars, 0..) |_, ci| {
-            // build X = pre(A, chars[ci]) via marks
             epoch_state += 1;
             epoch_block += 1;
             touched_blocks.clearRetainingCapacity();
 
-            // iterate t in A
             for (rA.start..rA.end) |idx| {
                 const t: StateId = block_states[idx];
                 const lst = &pred[ci * n + @as(usize, t)];
@@ -787,13 +814,12 @@ pub fn minimize(
                     if (mark_block.items[b] != epoch_block) {
                         mark_block.items[b] = epoch_block;
                         hit_count.items[b] = 0;
-                        try touched_blocks.append(allocator, b);
+                        try touched_blocks.append(scratch, b);
                     }
                     hit_count.items[b] += 1;
                 }
             }
 
-            // split each touched block Y
             for (touched_blocks.items) |Y| {
                 const rY = block_ranges.items[Y];
                 const y_len = rY.end - rY.start;
@@ -806,7 +832,6 @@ pub fn minimize(
 
                 const mid = partition(block_states, pos, rY, mark_state, epoch_state);
 
-                // Now [rY.start..mid) are marked, [mid..rY.end) unmarked
                 const left_len = mid - rY.start;
                 const right_len = rY.end - mid;
                 if (left_len == 0 or right_len == 0) {
@@ -814,39 +839,31 @@ pub fn minimize(
                     continue;
                 }
 
-                // Keep the larger side as Y, move smaller into new block Z
                 const keep_left = left_len >= right_len;
                 const kept: Range = if (keep_left) .{ .start = rY.start, .end = mid } else .{ .start = mid, .end = rY.end };
                 const moved: Range = if (keep_left) .{ .start = mid, .end = rY.end } else .{ .start = rY.start, .end = mid };
 
-                const Z = try AppendBlock.add(allocator, &block_ranges, &in_work, &hit_count, &mark_block, moved);
+                const Z = try AppendBlock.add(scratch, &block_ranges, &in_work, &hit_count, &mark_block, moved);
 
-                // update ranges
                 block_ranges.items[Y] = kept;
 
-                // moved states now belong to Z
                 for (moved.start..moved.end) |idx| {
                     const s = block_states[idx];
                     block_of[@as(usize, s)] = Z;
                 }
 
-                // worklist update rule:
-                // if Y is in work, add Z too; else add smaller piece
                 if (in_work.items[Y]) {
-                    try pushWork(allocator, &work, in_work.items, Z);
+                    try pushWork(scratch, &work, in_work.items, Z);
                 } else {
                     const smaller = if ((kept.end - kept.start) < (moved.end - moved.start)) Y else Z;
-                    try pushWork(allocator, &work, in_work.items, smaller);
+                    try pushWork(scratch, &work, in_work.items, smaller);
                 }
 
-                // cleanup
                 hit_count.items[Y] = 0;
-                // hit_count[Z] already 0 from AppendBlock.add
             }
         }
     }
 
-    // 6) build minimized dfa
     const m: usize = block_ranges.items.len;
     std.debug.assert(m > 0);
 
@@ -856,14 +873,12 @@ pub fn minimize(
     var out_accept = try allocator.alloc(bool, m);
     var out_next = try allocator.alloc(StateId, m * 256);
 
-    // accept per block: take representative (all should agree)
     for (0..m) |b| {
         const r = block_ranges.items[b];
         const rep: StateId = block_states[r.start];
         out_accept[b] = dfa.accept[@as(usize, rep)];
     }
 
-    // transitions from representative
     for (0..m) |b| {
         const r = block_ranges.items[b];
         const rep: StateId = block_states[r.start];
@@ -876,23 +891,6 @@ pub fn minimize(
         }
     }
 
-    // 7) cleanup
-    for (pred) |*lst| lst.deinit(allocator);
-    allocator.free(pred);
-
-    touched_blocks.deinit(allocator);
-    work.deinit(allocator);
-
-    block_ranges.deinit(allocator);
-    in_work.deinit(allocator);
-    hit_count.deinit(allocator);
-    mark_block.deinit(allocator);
-
-    allocator.free(mark_state);
-    allocator.free(block_states);
-    allocator.free(pos);
-    allocator.free(block_of);
-
     return .{
         .start = new_start,
         .accept = out_accept,
@@ -900,3 +898,16 @@ pub fn minimize(
         .dead = @intCast(new_dead),
     };
 }
+
+pub fn minimize(
+    allocator: std.mem.Allocator,
+    dfa: *const DenseDFA,
+) !DenseDFA {
+    var scratch_arena = std.heap.ArenaAllocator.init(allocator);
+    defer scratch_arena.deinit();
+    return try minimizeWithScratch(allocator, scratch_arena.allocator(), dfa);
+}
+
+
+
+// *TODO* write canonicalize
