@@ -63,6 +63,52 @@ fn printHelp() void {
     std.debug.print("{s}", .{help_text});
 }
 
+fn buildDenseDfaFromPattern(
+    final_allocator: std.mem.Allocator,
+    pattern: []const u8,
+) !dfa.DenseDFA {
+    return buildDfaFromPattern(final_allocator, pattern, false);
+}
+
+fn buildMinDfaFromPattern(
+    final_allocator: std.mem.Allocator,
+    pattern: []const u8,
+) !dfa.DenseDFA {
+    return buildDfaFromPattern(final_allocator, pattern, true);
+}
+
+fn buildDfaFromPattern(
+    final_allocator: std.mem.Allocator,
+    pattern: []const u8,
+    comptime do_minimize: bool,
+) !dfa.DenseDFA {
+    var scratch_build_arena = std.heap.ArenaAllocator.init(final_allocator);
+    defer scratch_build_arena.deinit();
+
+    var scratch_min_arena = std.heap.ArenaAllocator.init(final_allocator);
+    defer scratch_min_arena.deinit();
+
+    const scratch_build = scratch_build_arena.allocator();
+    const scratch_min = scratch_min_arena.allocator();
+
+    const tokens = try ast.tokenize(scratch_build, pattern);
+    const ir = try ast.addConcat(scratch_build, tokens);
+    const tree = try ast.shuntingYard(scratch_build, ir);
+
+    var autobot = nfa.NFA{};
+    const frag = try nfa.compileNode(scratch_build, tree, &autobot);
+    autobot.states.items[frag.accept].is_accept = true;
+
+    const sparse_dfa = try dfa.makeDFA(scratch_build, &autobot, frag.start);
+
+    if (do_minimize) {
+        const dense_dfa = try dfa.toDense(scratch_min, &sparse_dfa);
+        return try dfa.minimize(final_allocator, &dense_dfa);
+    } else {
+        return try dfa.toDense(final_allocator, &sparse_dfa);
+    }
+}
+
 fn handleDump(allocator: std.mem.Allocator, pattern: []const u8, options: [][]u8) !void {
     var out_buf: [1 << 16]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&out_buf);
