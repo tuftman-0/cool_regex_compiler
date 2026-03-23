@@ -911,3 +911,34 @@ pub fn minimize(
 
 
 // *TODO* write canonicalize
+
+/// takes two minimized DFAs and checks if they're isomorphic/equivalent
+pub fn equals(allocator: std.mem.Allocator, a: *const DenseDFA, b: *const DenseDFA) bool {
+    if (a.accept.len != b.accept.len) return false;
+
+    var seen = BitSet.initEmpty(allocator, a.accept.len * b.accept.len) catch unreachable;
+    defer seen.deinit(allocator);
+
+    return eq_helper(a, b, a.start, b.start, &seen);
+}
+
+fn eq_helper(
+    a: *const DenseDFA,
+    b: *const DenseDFA,
+    a_st: StateId,
+    b_st: StateId,
+    seen: *BitSet,
+) bool {
+    const idx = a_st * b.accept.len + b_st;
+    if (seen.isSet(idx)) return true;
+    seen.set(idx);
+
+    if (a.accept[a_st] != b.accept[b_st]) return false;
+
+    for (0..256) |ch| {
+        const a_succ = a.nextState(a_st, ch);
+        const b_succ = b.nextState(b_st, ch);
+        if (!eq_helper(a, b, a_succ, b_succ, seen)) return false;
+    }
+    return true;
+}
