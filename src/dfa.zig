@@ -34,7 +34,7 @@ fn epsilonClosure(
     while (it0.next()) |s_usize| out.set(s_usize);
 
     var stack: std.ArrayList(StateId) = .empty;
-    // defer stack.deinit(allocator);
+    defer stack.deinit(allocator);
 
     // push initial states
     var it1 = input.iterator(.{});
