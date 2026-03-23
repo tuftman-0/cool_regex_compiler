@@ -34,7 +34,6 @@ pub fn main() !void {
     } else if (std.mem.eql(u8, command, "match")) {
         try handleMatch(allocator, pattern, slice_args[3..]);
     } else if (std.mem.eql(u8, command, "search") or std.mem.eql(u8, command, "grep")) {
-        // try handleSearch();
         try handleSearch(allocator, pattern, slice_args[3..]);
     } else if (std.mem.eql(u8, command, "equals")) {
         try handleEquals(allocator, pattern, slice_args[3..]);
