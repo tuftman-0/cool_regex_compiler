@@ -52,7 +52,7 @@ fn printHelp() void {
         \\  match <string>       Check if string matches the regex (default)
         \\  equals <expression>  Check if two expressions are equivalent
         \\  dump [options]       Output internal structures (AST, NFA, DFA)
-        \\  search/grep <files>  [Not Implemented] Search files for pattern
+        \\  search/grep <files>  Search files for pattern
         \\
         \\Dump Options:
         \\  -t, --ast            Dump the Abstract Syntax Tree
