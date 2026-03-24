@@ -3,18 +3,10 @@ const ast = @import("regex_ast.zig");
 
 pub const StateId = u16; // indices for states in NFA and DFA (determines max number of states)
 
-pub const TransitionTag = enum { ch, any };
-
-pub const Transition = union(TransitionTag) {
+pub const Transition = union(enum) {
     ch: struct { ch: u8, to: StateId },
     any: struct { to: StateId }, // means any char except '\n'
 };
-
-// // old
-// pub const Transition = struct {
-//     ch: u8,
-//     to: StateId,
-// };
 
 pub const State = struct {
     eps: std.ArrayList(StateId) = .{},
