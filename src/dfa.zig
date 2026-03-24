@@ -17,7 +17,30 @@ pub const DFA = struct {
         a.free(self.edges);
         a.free(self.accept);
     }
+
+ pub fn init(a: std.mem.Allocator, n_states: usize, start: StateId) !DFA {
+        const accept = try a.alloc(bool, n_states);
+        errdefer a.free(accept);
+
+        const edges = try a.alloc(std.ArrayList(Edge), n_states);
+        errdefer a.free(edges);
+
+        for (accept) |*b| b.* = false;
+        for (edges) |*lst| lst.* = .{};
+
+        return .{
+            .start = start,
+            .accept = accept,
+            .edges = edges,
+        };
+    }
+
+    pub fn addEdge(self: *DFA, a: std.mem.Allocator, from: StateId, ch: u8, to: StateId) !void {
+        try self.edges[from].append(a, .{ .ch = ch, .to = to });
+    }
 };
+
+
 
 /// out = epsilon-closure(input)
 fn epsilonClosure(
@@ -295,6 +318,8 @@ pub const DenseDFA = struct {
         return self.accept[@as(usize, state)];
     }
 };
+
+
 
 pub fn toDense(
     allocator: std.mem.Allocator,
@@ -936,3 +961,5 @@ fn eq_helper(
     }
     return true;
 }
+
+
