@@ -4,6 +4,7 @@ const ast = @import("regex_ast.zig");
 const nfa = @import("nfa.zig");
 const dfa = @import("dfa.zig");
 const search = @import("search.zig");
+const decomp = @import("decompile.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -37,6 +38,8 @@ pub fn main() !void {
         try handleSearch(allocator, pattern, slice_args[3..]);
     } else if (std.mem.eql(u8, command, "equals")) {
         try handleEquals(allocator, pattern, slice_args[3..]);
+    } else if (std.mem.eql(u8, command, "decomp")) {
+        try handleDecomp(allocator, pattern, slice_args[3..]);
     } else {
         std.debug.print("Unknown command: {s}\n", .{command});
         return printHelp();
@@ -319,4 +322,23 @@ fn handleSearch(allocator: std.mem.Allocator, pattern: []const u8, remaining: []
     }
 
     try stdout.flush();
+}
+
+fn handleDecomp(allocator: std.mem.Allocator, pattern: []u8, remaining:[][]u8) !void {
+    _ = pattern;
+    _ = remaining;
+
+    var out_buf: [1 << 16]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &stdout_writer.interface;
+
+    var arena: std.heap.ArenaAllocator = .init(allocator);
+    defer arena.deinit();
+    const aa = arena.allocator();
+
+    const machine = try decomp.make9div(aa);
+    var gnfa = try decomp.DFA_to_GNFA(aa, &machine);
+    var reg = try gnfa.toRegex();
+
+    try reg.printExpr(stdout);
 }
