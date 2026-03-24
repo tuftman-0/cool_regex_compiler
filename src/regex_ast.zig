@@ -148,6 +148,46 @@ pub const RegexNode = union(RegexTag) {
         }
     }
 
+    pub fn printExpr(self: *const RegexNode, stdout: *std.Io.Writer) !void {
+        try self.printWithPrec(stdout, 0);
+    }
+
+    fn printWithPrec(self: *const RegexNode, stdout: *std.Io.Writer, parent_prec: u8) !void {
+        const my_prec = prec(self.*);
+
+        const need_paren = my_prec < parent_prec;
+        if (need_paren) try stdout.print("(", .{});
+
+        switch (self.*) {
+            .char => |c| try stdout.print("{c}", .{c}),
+            .epsilon => try stdout.print("ε", .{}), // or "" if you prefer
+            .any => try stdout.print(".", .{}),
+
+            .star => |child| {
+                try child.printWithPrec(stdout, my_prec);
+                try stdout.print("*", .{});
+            },
+
+            .plus => |child| {
+                try child.printWithPrec(stdout, my_prec);
+                try stdout.print("+", .{});
+            },
+
+            .concat => |pair| {
+                try pair.left.printWithPrec(stdout, my_prec);
+                try pair.right.printWithPrec(stdout, my_prec);
+            },
+
+            .choice => |pair| {
+                try pair.left.printWithPrec(stdout, my_prec);
+                try stdout.print("|", .{});
+                try pair.right.printWithPrec(stdout, my_prec);
+            },
+        }
+
+        if (need_paren) try stdout.print(")", .{});
+    }
+
     pub fn clone(self: *const RegexNode, allocator: std.mem.Allocator) !*RegexNode {
         const out = try allocator.create(RegexNode);
         out.* = switch (self.*) {
@@ -222,8 +262,15 @@ pub const RegexNode = union(RegexTag) {
 };
 
 
-
-fn mkConcat(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !*RegexNode {
+fn prec(node: RegexNode) u8 {
+    return switch (node) {
+        .char, .epsilon, .any => 3,
+        .star, .plus => 2,
+        .concat => 1,
+        .choice => 0,
+    };
+}
+pub fn mkConcat(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !*RegexNode {
     // simplify concatenations with epsilon
     if (left.* == .epsilon) return right;
     if (right.* == .epsilon) return left;
@@ -232,7 +279,7 @@ fn mkConcat(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !
     return parent;
 }
 
-fn mkChoice(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !*RegexNode {
+pub fn mkChoice(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !*RegexNode {
     // if (left.*. == right.*) return left; // shallow equality to detect simple stuff
     if (left.equals(right)) return left; // can do full equality but it's expensive
     const parent = try allocator.create(RegexNode);
@@ -240,7 +287,7 @@ fn mkChoice(allocator: std.mem.Allocator, left: *RegexNode, right: *RegexNode) !
     return parent;
 }
 
-fn mkStar(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
+pub fn mkStar(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
     return switch (child.*) {
         // if child is a* a+ or epsilon adding a star won't change anything
         .star, .plus, .epsilon => child,
@@ -252,7 +299,7 @@ fn mkStar(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
     };
 }
 
-fn mkPlus(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
+pub fn mkPlus(allocator: std.mem.Allocator, child: *RegexNode) !*RegexNode {
     return switch (child.*) {
         // if child is a* a+ or epsilon adding a plus won't change anything
         .star, .plus, .epsilon => child,
