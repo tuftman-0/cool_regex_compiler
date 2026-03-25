@@ -39,6 +39,7 @@ pub const GNFA = struct {
         //     if (label) |val| val.deinit(self.allocator);
         // }
         self.allocator.free(self.labels);
+        self.allocator.free(self.alive);
     }
 
     pub fn idx(self: *const GNFA, from: StateId, to: StateId) usize {
