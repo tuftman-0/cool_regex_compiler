@@ -23,6 +23,8 @@ pub const GNFA = struct {
         const alive = try allocator.alloc(bool, n_states);
         for (alive) |*b| b.* = true;
 
+        if (n_states > std.math.maxInt(StateId)) return error.TooManyStates;
+
         return GNFA{
             .start = @intCast(n_states - 2),
             .accept = @intCast(n_states - 1),
