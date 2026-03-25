@@ -6,17 +6,6 @@ const dfa = @import("dfa.zig");
 const StateId = nfa.StateId;
 const RegexNode = ast.RegexNode;
 
-// pub const Edge = struct {
-//     from: StateId,
-//     to: StateId,
-//     pattern: *RegexNode,
-// };
-
-// pub const State = struct {
-//     trans: std.ArrayList(Transition) = .{},
-//     is_accept: bool = false,
-// };
-
 pub const GNFA = struct {
     start: StateId,
     accept: StateId,
