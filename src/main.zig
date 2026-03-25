@@ -5,6 +5,7 @@ const nfa = @import("nfa.zig");
 const dfa = @import("dfa.zig");
 const search = @import("search.zig");
 const decomp = @import("decompile.zig");
+const machines = @import("test_machines.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -336,7 +337,7 @@ fn handleDecomp(allocator: std.mem.Allocator, pattern: []u8, remaining:[][]u8) !
     defer arena.deinit();
     const aa = arena.allocator();
 
-    const machine = try decomp.make9div(aa);
+    const machine = try machines.make9div(aa);
     var gnfa = try decomp.DFA_to_GNFA(aa, &machine);
     var reg = try gnfa.toRegex();
 
