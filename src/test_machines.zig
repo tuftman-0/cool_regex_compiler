@@ -1,6 +1,31 @@
 const std = @import("std");
 const dfa = @import("dfa.zig");
 
+
+pub fn makeSimple(a: std.mem.Allocator) !dfa.DFA {
+    var machine = try dfa.DFA.init(a, 5, 0);
+    machine.accept[1] = true;
+    machine.accept[4] = true;
+
+    try machine.addEdge(a, 0, '0', 3);
+    try machine.addEdge(a, 0, '1', 2);
+
+    try machine.addEdge(a, 1, '0', 1);
+    try machine.addEdge(a, 1, '1', 3);
+
+    try machine.addEdge(a, 2, '0', 2);
+    try machine.addEdge(a, 2, '1', 4);
+
+    try machine.addEdge(a, 3, '0', 1);
+    try machine.addEdge(a, 3, '1', 3);
+
+    try machine.addEdge(a, 4, '0', 2);
+    try machine.addEdge(a, 4, '1', 4);
+
+    return machine;
+
+}
+
 pub fn make9div(a: std.mem.Allocator) !dfa.DFA {
     var machine = try dfa.DFA.init(a, 9, 0);
     machine.accept[0] = true;
