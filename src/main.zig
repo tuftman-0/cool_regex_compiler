@@ -338,8 +338,13 @@ fn handleDecomp(allocator: std.mem.Allocator, pattern: []u8, remaining:[][]u8) !
     const aa = arena.allocator();
 
     const machine = try machines.make9div(aa);
+    // const dense = dfa.toDense(aa, machine);
+
     var gnfa = try decomp.DFA_to_GNFA(aa, &machine);
     var reg = try gnfa.toRegex();
 
+    // try reg.print(stdout,0);
     try reg.printExpr(stdout);
+    try stdout.print("\n", .{});
+    try stdout.flush();
 }
