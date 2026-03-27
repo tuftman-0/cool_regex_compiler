@@ -38,10 +38,79 @@ pub const DFA = struct {
     pub fn addEdge(self: *DFA, a: std.mem.Allocator, from: StateId, ch: u8, to: StateId) !void {
         try self.edges[from].append(a, .{ .ch = ch, .to = to });
     }
+
+    pub fn dumpAsZigBuilder(
+        machine: *const DFA,
+        writer: *std.Io.Writer,
+        fn_name: []const u8,
+    ) !void {
+        try writer.print("pub fn {s}(a: std.mem.Allocator) !DFA {{\n", .{fn_name});
+        try writer.print("    var dfa = try DFA.init(a, {d}, {d});\n", .{
+            machine.accept.len,
+            machine.start,
+        });
+
+        for (machine.accept, 0..) |is_accept, i| {
+            if (is_accept) {
+                try writer.print("    dfa.accept[{d}] = true;\n", .{i});
+            }
+        }
+
+        for (machine.edges, 0..) |edges, from| {
+            for (edges.items) |edge| {
+                try writer.print(
+                    "    try dfa.addEdge(a, {d}, {d}, {d});\n",
+                    .{ from, edge.ch, edge.to },
+                );
+            }
+        }
+
+        try writer.print("    return dfa;\n", .{});
+        try writer.print("}}\n", .{});
+    }
 };
 
 
+fn dumpByteLiteral(writer: *std.Io.Writer, ch: u8) !void {
+    switch (ch) {
+        '\n' => try writer.print("'\\n'", .{}),
+        '\r' => try writer.print("'\\r'", .{}),
+        '\t' => try writer.print("'\\t'", .{}),
+        '\\' => try writer.print("'\\\\'", .{}),
+        '\'' => try writer.print("'\\''", .{}),
+        32...126 => try writer.print("'{c}'", .{ch}),
+        else => try writer.print("{d}", .{ch}),
+    }
+}
 
+pub fn dumpAsZigBuilderPretty(
+    machine: *const DFA,
+    writer: *std.Io.Writer,
+    fn_name: []const u8,
+) !void {
+    try writer.print("pub fn {s}(a: std.mem.Allocator) !DFA {{\n", .{fn_name});
+    try writer.print("    var dfa = try DFA.init(a, {d}, {d});\n", .{
+        machine.accept.len,
+        machine.start,
+    });
+
+    for (machine.accept, 0..) |is_accept, i| {
+        if (is_accept) {
+            try writer.print("    dfa.accept[{d}] = true;\n", .{i});
+        }
+    }
+
+    for (machine.edges, 0..) |edges, from| {
+        for (edges.items) |edge| {
+            try writer.print("    try dfa.addEdge(a, {d}, ", .{from});
+            try dumpByteLiteral(writer, edge.ch);
+            try writer.print(", {d});\n", .{edge.to});
+        }
+    }
+
+    try writer.print("    return dfa;\n", .{});
+    try writer.print("}}\n", .{});
+}
 /// out = epsilon-closure(input)
 fn epsilonClosure(
     allocator: std.mem.Allocator,
