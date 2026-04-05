@@ -208,7 +208,7 @@ fn encodeSetKey(allocator: std.mem.Allocator, set: *const BitSet) ![]u8 {
     var i: usize = 0;
     var it = set.iterator(.{});
     while (it.next()) |idx_usize| {
-        const idx: u16 = @intCast(idx_usize);
+        const idx: StateId = @intCast(idx_usize);
         bytes[i + 0] = @truncate(idx);
         bytes[i + 1] = @truncate(idx >> 8);
         i += 2;
