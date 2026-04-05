@@ -227,7 +227,7 @@ pub const RegexNode = union(RegexTag) {
                 else => false,
             },
             .plus => |child1| switch (other.*) {
-                .star => |child2| child1.equals(child2),
+                .plus => |child2| child1.equals(child2),
                 else => false,
             },
             .concat => |p1| switch (other.*) {
@@ -235,7 +235,7 @@ pub const RegexNode = union(RegexTag) {
                 else => false,
             },
             .choice => |p1| switch (other.*) {
-                .concat => |p2| (p1.left.equals(p2.left) and p1.right.equals(p2.right)) or
+                .choice => |p2| (p1.left.equals(p2.left) and p1.right.equals(p2.right)) or
                                 (p1.left.equals(p2.right) and p1.right.equals(p2.left)),
                 else => false,
             },
