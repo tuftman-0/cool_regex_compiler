@@ -6,6 +6,7 @@ const dfa = @import("dfa.zig");
 const search = @import("search.zig");
 const decomp = @import("decompile.zig");
 const machines = @import("test_machines.zig");
+const reduce = @import("regex_simplify.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -103,6 +104,34 @@ fn buildDfaFromPattern(
 
     var autobot = nfa.NFA{};
     const frag = try nfa.compileNode(scratch_build, tree, &autobot);
+    autobot.states.items[frag.accept].is_accept = true;
+
+    const sparse_dfa = try dfa.makeDFA(scratch_build, &autobot, frag.start);
+
+    if (do_minimize) {
+        const dense_dfa = try dfa.toDense(scratch_min, &sparse_dfa);
+        return try dfa.minimize(final_allocator, &dense_dfa);
+    } else {
+        return try dfa.toDense(final_allocator, &sparse_dfa);
+    }
+}
+
+fn buildDfaFromNode(
+    final_allocator: std.mem.Allocator,
+    node: *const ast.RegexNode,
+    comptime do_minimize: bool,
+) !dfa.DenseDFA {
+    var scratch_build_arena = std.heap.ArenaAllocator.init(final_allocator);
+    defer scratch_build_arena.deinit();
+
+    var scratch_min_arena = std.heap.ArenaAllocator.init(final_allocator);
+    defer scratch_min_arena.deinit();
+
+    const scratch_build = scratch_build_arena.allocator();
+    const scratch_min = scratch_min_arena.allocator();
+
+    var autobot = nfa.NFA{};
+    const frag = try nfa.compileNode(scratch_build, node, &autobot);
     autobot.states.items[frag.accept].is_accept = true;
 
     const sparse_dfa = try dfa.makeDFA(scratch_build, &autobot, frag.start);
@@ -326,7 +355,7 @@ fn handleSearch(allocator: std.mem.Allocator, pattern: []const u8, remaining: []
 }
 
 fn handleDecomp(allocator: std.mem.Allocator, pattern: []u8, remaining:[][]u8) !void {
-    _ = pattern;
+    _=pattern;
     _ = remaining;
 
     var out_buf: [1 << 16]u8 = undefined;
@@ -337,14 +366,27 @@ fn handleDecomp(allocator: std.mem.Allocator, pattern: []u8, remaining:[][]u8) !
     defer arena.deinit();
     const aa = arena.allocator();
 
+    // const test_machine = try buildMinDfaFromPattern(aa, pattern);
+
     const machine = try machines.make9div(aa);
+
+    // const dense= try dfa.toDense(aa, &machine);
+    // try dfa.dumpParker(stdout, &dense, false);
+    // const test_machine = try dfa.minimize(aa, &dense);
+    // std.debug.print("{d}", .{dense.accept.len});
+    // std.debug.print("{d}", .{minimized.accept.len});
     // const dense = dfa.toDense(aa, machine);
 
     var gnfa = try decomp.DFA_to_GNFA(aa, &machine);
-    var reg = try gnfa.toRegex();
+    const reg = try gnfa.toRegex();
+    // const reg_machine = try buildDfaFromNode(aa, reg, true);
+    // const equal = dfa.equals(aa, &test_machine, &reg_machine);
+    // const simplified = try reduce.simplify(aa, reg);
 
     // try reg.print(stdout,0);
+    // try simplified.printExpr(stdout);
     try reg.printExpr(stdout);
-    try stdout.print("\n", .{});
+    // std.debug.print("\n", .{});
     try stdout.flush();
+    // std.debug.print("\n{}\n", .{equal});
 }
