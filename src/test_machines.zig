@@ -26,6 +26,46 @@ pub fn makeSimple(a: std.mem.Allocator) !dfa.DFA {
 
 }
 
+
+pub fn make3div(a: std.mem.Allocator) !dfa.DFA {
+    var machine = try dfa.DFA.init(a, 3, 0);
+    machine.accept[0] = true;
+
+    try machine.addEdge(a, 0, '0', 0);
+    try machine.addEdge(a, 0, '1', 1);
+    try machine.addEdge(a, 0, '2', 2);
+    try machine.addEdge(a, 0, '3', 0);
+    try machine.addEdge(a, 0, '4', 1);
+    try machine.addEdge(a, 0, '5', 2);
+    try machine.addEdge(a, 0, '6', 0);
+    try machine.addEdge(a, 0, '7', 1);
+    try machine.addEdge(a, 0, '8', 2);
+    try machine.addEdge(a, 0, '9', 0);
+
+    try machine.addEdge(a, 1, '0', 1);
+    try machine.addEdge(a, 1, '1', 2);
+    try machine.addEdge(a, 1, '2', 0);
+    try machine.addEdge(a, 1, '3', 1);
+    try machine.addEdge(a, 1, '4', 2);
+    try machine.addEdge(a, 1, '5', 0);
+    try machine.addEdge(a, 1, '6', 1);
+    try machine.addEdge(a, 1, '7', 2);
+    try machine.addEdge(a, 1, '8', 0);
+    try machine.addEdge(a, 1, '9', 1);
+
+    try machine.addEdge(a, 2, '0', 2);
+    try machine.addEdge(a, 2, '1', 0);
+    try machine.addEdge(a, 2, '2', 1);
+    try machine.addEdge(a, 2, '3', 2);
+    try machine.addEdge(a, 2, '4', 0);
+    try machine.addEdge(a, 2, '5', 1);
+    try machine.addEdge(a, 2, '6', 2);
+    try machine.addEdge(a, 2, '7', 0);
+    try machine.addEdge(a, 2, '8', 1);
+    try machine.addEdge(a, 2, '9', 2);
+    return machine;
+}
+
 pub fn make9div(a: std.mem.Allocator) !dfa.DFA {
     var machine = try dfa.DFA.init(a, 9, 0);
     machine.accept[0] = true;
