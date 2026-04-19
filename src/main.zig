@@ -368,7 +368,7 @@ fn handleDecomp(allocator: std.mem.Allocator, pattern: []u8, remaining:[][]u8) !
 
     // const test_machine = try buildMinDfaFromPattern(aa, pattern);
 
-    const machine = try machines.make9div(aa);
+    const machine = try machines.make3div(aa);
 
     // const dense= try dfa.toDense(aa, &machine);
     // try dfa.dumpParker(stdout, &dense, false);
@@ -381,11 +381,11 @@ fn handleDecomp(allocator: std.mem.Allocator, pattern: []u8, remaining:[][]u8) !
     const reg = try gnfa.toRegex();
     // const reg_machine = try buildDfaFromNode(aa, reg, true);
     // const equal = dfa.equals(aa, &test_machine, &reg_machine);
-    // const simplified = try reduce.simplify(aa, reg);
+    const simplified = try reduce.simplify(aa, reg);
 
     // try reg.print(stdout,0);
-    // try simplified.printExpr(stdout);
-    try reg.printExpr(stdout);
+    try simplified.printExpr(stdout);
+    // try reg.printExpr(stdout);
     // std.debug.print("\n", .{});
     try stdout.flush();
     // std.debug.print("\n{}\n", .{equal});
