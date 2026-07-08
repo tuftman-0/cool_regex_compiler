@@ -103,7 +103,7 @@ fn buildDfaFromPattern(
     const tree = try ast.shuntingYard(scratch_build, ir);
 
     var autobot = nfa.NFA{};
-    const frag = try nfa.compileNode(scratch_build, tree, &autobot);
+    const frag = try autobot.compileRegexNode(scratch_build, tree);
     autobot.states.items[frag.accept].is_accept = true;
 
     const sparse_dfa = try dfa.makeDFA(scratch_build, &autobot, frag.start);
@@ -131,7 +131,7 @@ fn buildDfaFromNode(
     const scratch_min = scratch_min_arena.allocator();
 
     var autobot = nfa.NFA{};
-    const frag = try nfa.compileNode(scratch_build, node, &autobot);
+    const frag = try autobot.compileRegexNode(scratch_build, node);
     autobot.states.items[frag.accept].is_accept = true;
 
     const sparse_dfa = try dfa.makeDFA(scratch_build, &autobot, frag.start);
@@ -191,7 +191,7 @@ fn handleDump(allocator: std.mem.Allocator, pattern: []const u8, options: [][]u8
         return;
     }
     var autobot = nfa.NFA{};
-    const frag = try nfa.compileNode(aa, tree, &autobot);
+    const frag = try autobot.compileRegexNode(aa, tree);
     autobot.states.items[frag.accept].is_accept = true;
     if (dump_nfa) try nfa.dumpNFA(stdout, &autobot);
 
@@ -235,7 +235,7 @@ fn handleMatch(allocator: std.mem.Allocator, pattern: []const u8, remaining: [][
     // *TODO* maybe pass stdout to printing functions
 
     var autobot = nfa.NFA{};
-    const frag = try nfa.compileNode(aa, tree, &autobot);
+    const frag = try autobot.compileRegexNode(aa, tree);
     autobot.states.items[frag.accept].is_accept = true;
 
     const sparse_dfa = try dfa.makeDFA(aa, &autobot, frag.start);
@@ -287,7 +287,7 @@ fn handleSearch(allocator: std.mem.Allocator, pattern: []const u8, remaining: []
     defer final_arena.deinit();
     const scratch_build = scratch_build_arena.allocator();
     const scratch_min = scratch_minimize_arena.allocator();
-    const final = final_arena.allocator();
+    // const final = final_arena.allocator();
 
     // detect and trim anchors from pattern
     var anchored_start = false;
@@ -304,27 +304,45 @@ fn handleSearch(allocator: std.mem.Allocator, pattern: []const u8, remaining: []
 
     // wrap pattern in wildcards depending on anchors
     const key: u2 = (@as(u2, @intFromBool(anchored_start)) << 1) | @as(u2, @intFromBool(anchored_end));
-    const wrapped_pattern = switch (key) {
-        0b00 => try std.mem.concat(scratch_build, u8, &.{ ".*", pat, ".*" }),
-        0b01 => try std.mem.concat(scratch_build, u8, &.{ ".*", pat }),
-        0b10 => try std.mem.concat(scratch_build, u8, &.{ pat, ".*" }),
-        0b11 => pat,
+    // const wrapped_pattern = switch (key) {
+    //     0b00 => try std.mem.concat(scratch_build, u8, &.{ ".*", pat, ".*" }),
+    //     0b01 => try std.mem.concat(scratch_build, u8, &.{ ".*", pat }),
+    //     0b10 => try std.mem.concat(scratch_build, u8, &.{ pat, ".*" }),
+    //     0b11 => pat,
+    //     else => pat
+    // };
+    const match_fn: *const fn (*const dfa.DenseDFA, []const u8) bool = switch (key) {
+        0b00 => dfa.DenseDFA.search,
+        0b01 => dfa.DenseDFA.matchesSuffixReverse,
+        0b10 => dfa.DenseDFA.matchesPrefix,
+        0b11 => dfa.DenseDFA.matches,
     };
 
-    const tokens = try ast.tokenize(scratch_build, wrapped_pattern);
+    // std.debug.print("{s}\n", .{wrapped_pattern});
+
+    const tokens = try ast.tokenize(scratch_build, pat);
     const ir = try ast.addConcat(scratch_build, tokens);
-    const tree = try ast.shuntingYard(scratch_build, ir);
+    const forwards_tree = try ast.shuntingYard(scratch_build, ir);
+
+    const target_fn: *const fn (*const dfa.DenseDFA, []const u8) bool = dfa.DenseDFA.matchesSuffixReverse;
+    const tree: *ast.RegexNode = if (match_fn == target_fn)
+        try forwards_tree.reverse(scratch_build)
+    else
+        forwards_tree;
+    // const tree = forwards_tree;
 
     var autobot = nfa.NFA{};
-    const frag = try nfa.compileNode(scratch_build, tree, &autobot);
+
+    const frag = try autobot.compileRegexNode(scratch_build, tree);
+    // const frag = try autobot.compileRegexNode(scratch_build, tree);
     autobot.states.items[frag.accept].is_accept = true;
 
     const sparse_dfa = try dfa.makeDFA(scratch_build, &autobot, frag.start);
     const dense_dfa = try dfa.toDense(scratch_min, &sparse_dfa);
     scratch_build_arena.deinit();
 
-    const min_dfa = try dfa.minimize(final, &dense_dfa);
-    scratch_minimize_arena.deinit();
+    // const min_dfa = try dfa.minimize(final, &dense_dfa);
+    defer scratch_minimize_arena.deinit();
 
     var file: std.fs.File = undefined;
     var reader_buf: [4096]u8 = undefined;
@@ -348,7 +366,7 @@ fn handleSearch(allocator: std.mem.Allocator, pattern: []const u8, remaining: []
             if (rem.len > 1) opts.label = arg;
         }
         const reader = &file_reader.interface;
-        try search.searchFile(allocator, stdout, reader, &min_dfa, opts);
+        try search.searchFile(allocator, stdout, reader, &dense_dfa, match_fn, opts);
     }
 
     try stdout.flush();

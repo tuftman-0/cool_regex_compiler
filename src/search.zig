@@ -10,6 +10,7 @@ const MatchIterator = struct {
     reader: *std.Io.Reader,
     machine: *const dfa.DenseDFA,
     line_buf: std.Io.Writer.Allocating,
+    match_fn: *const fn (*const dfa.DenseDFA, []const u8) bool,
     done: bool = false,
     line_no: usize = 0,
 
@@ -17,10 +18,12 @@ const MatchIterator = struct {
         allocator: std.mem.Allocator,
         reader: *std.Io.Reader,
         machine: *const dfa.DenseDFA,
+        match_fn: *const fn (*const dfa.DenseDFA, []const u8) bool,
     ) MatchIterator {
         return .{
             .reader = reader,
             .machine = machine,
+            .match_fn = match_fn,
             .line_buf = std.Io.Writer.Allocating.init(allocator),
         };
     }
@@ -39,15 +42,15 @@ const MatchIterator = struct {
                 // EOF: use tail once, then stop forever
                 const tail = self.line_buf.written();
                 self.done = true;
-                if (tail.len != 0 and self.machine.matches(tail)) return .{ .line = tail, .line_no = self.line_no};
+                if (tail.len != 0 and self.match_fn(self.machine, tail)) return .{ .line = tail, .line_no = self.line_no};
                 return null;
             };
 
             _ = streamed;
-            const line = self.line_buf.written();
+            const line = self.line_buf.written(); // line slice is temporary
             self.reader.toss(1); // consume '\n'
 
-            if (self.machine.matches(line)) return .{ .line = line, .line_no = self.line_no};
+            if (self.match_fn(self.machine, line)) return .{ .line = line, .line_no = self.line_no};
         }
         return null;
     }
@@ -70,9 +73,10 @@ pub fn searchFile(
     out: *std.Io.Writer,
     reader: *std.Io.Reader,
     machine: *const dfa.DenseDFA,
+    match_fn: *const fn (*const dfa.DenseDFA, []const u8) bool,
     opts: PrintOpts,
 ) !void {
-    var it = MatchIterator.init(allocator, reader, machine);
+    var it = MatchIterator.init(allocator, reader, machine, match_fn);
     defer it.deinit();
 
     while (try it.next()) |m| {

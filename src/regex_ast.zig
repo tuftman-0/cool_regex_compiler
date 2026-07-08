@@ -67,9 +67,26 @@ pub fn tokenize(allocator: std.mem.Allocator, pattern: []const u8) ![]Token {
             '~' => .{ .epsilon = {} }, // empty string
             '\\' => blk: {
                 if (i + 1 >= pattern.len) return error.TrailingEscape;
-                i += 1; // consume escaped char
-                break :blk .{ .literal = pattern[i] };
+                i += 1;
+
+                const esc = pattern[i];
+                const c: u8 = switch (esc) {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    // '\\' => '\\',
+
+                    // treat everything else as literal escape
+                    else => esc,
+                };
+
+                break :blk .{ .literal = c };
             },
+            // '\\' => blk: {
+            //     if (i + 1 >= pattern.len) return error.TrailingEscape;
+            //     i += 1; // consume escaped char
+            //     break :blk .{ .literal = pattern[i] };
+            // },
             else => .{ .literal = ch },
         };
         try tokens.append(allocator, tok);
@@ -203,6 +220,26 @@ pub const RegexNode = union(RegexTag) {
             .choice  => |p| .{ .choice = .{
                 .left = try p.left.clone(allocator),
                 .right = try p.right.clone(allocator),
+            }},
+        };
+        return out;
+    }
+
+    pub fn reverse(self: *const RegexNode, allocator: std.mem.Allocator) !*RegexNode {
+        const out = try allocator.create(RegexNode);
+        out.* = switch (self.*) {
+            .char    => |c| .{ .char = c },
+            .epsilon => .{ .epsilon = {} },
+            .any     => .{ .any = {} },
+            .star    => |child| .{ .star = try child.reverse(allocator) },
+            .plus    => |child| .{ .plus = try child.reverse(allocator) },
+            .concat  => |p| .{ .concat = .{
+                .left = try p.right.reverse(allocator),
+                .right = try p.left.reverse(allocator),
+            }},
+            .choice  => |p| .{ .choice = .{
+                .left = try p.left.reverse(allocator),
+                .right = try p.right.reverse(allocator),
             }},
         };
         return out;

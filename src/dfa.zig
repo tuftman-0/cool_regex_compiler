@@ -371,7 +371,7 @@ pub const DenseDFA = struct {
         a.free(self.accept);
     }
 
-    pub fn nextState(self: *const DenseDFA, state: StateId, transition: usize) StateId {
+    pub inline fn nextState(self: *const DenseDFA, state: StateId, transition: usize) StateId {
         return self.next[@as(usize, state) * 256 + transition];
 
     }
@@ -380,13 +380,65 @@ pub const DenseDFA = struct {
     pub fn matches(self: *const DenseDFA, input: []const u8) bool {
         var state: StateId = self.start;
         for (input) |ch| {
-            state = self.next[@as(usize, state) * 256 + ch];
+            state = self.nextState(state, ch);
+            // std.debug.print("{d}\n{d}\n", .{state, self.dead});
             // short circuit on dead (might need to change this if arbitrary machine input is allowed or enforce a dead state that goes nowhere)
             if (state == self.dead) return false;
         }
         return self.accept[@as(usize, state)];
     }
-};
+
+    pub fn matchesPrefix(self: *const DenseDFA, input: []const u8) bool {
+        var state = self.start;
+        if (self.accept[state]) return true;
+
+        for (input) |ch| {
+            state = self.nextState(state, ch);
+            // std.debug.print("{d}\n{d}\n", .{state, self.dead});
+            if (self.accept[state]) return true; // Short-circuit on first match!
+            if (state == self.dead) return false;
+        }
+        return false;
+    }
+
+    pub fn search(self: *const DenseDFA, input: []const u8) bool {
+        var state = self.start;
+        if (self.accept[state]) return true;
+
+        for (input) |ch| {
+            var next = self.nextState(state, ch);
+
+            // If we hit a dead end, don't fail! Reset back to the start state
+            // and try matching the current character as the beginning of the regex.
+            if (next == self.dead) {
+                next = self.nextState(self.start, ch);
+            }
+
+            state = next;
+            if (self.accept[state]) return true;
+        }
+        return false;
+    }
+
+    /// NOTE: This requires a DFA compiled with a reversed NFA topology!
+    pub fn matchesSuffixReverse(self: *const DenseDFA, input: []const u8) bool {
+        var state = self.start;
+        if (self.accept[state]) return true;
+
+        // Iterate BACKWARDS from the end of the string
+        var i: usize = input.len;
+        while (i > 0) {
+            i -= 1;
+            const ch = input[i];
+
+            state = self.nextState(state, ch);
+
+            // Because it's reversed, we can short-circuit on the very first match!
+            if (self.accept[state]) return true;
+            if (state == self.dead) return false;
+        }
+        return false;
+    }};
 
 
 
@@ -507,10 +559,28 @@ fn printState(stdout: anytype, s: usize, dead: usize, show_dead: bool) !void {
     }
 }
 
+// fn printByte(stdout: *std.Io.Writer, byte: u8) !void {
+//     switch (byte) {
+//         0x00...0x1F, 0x7F...0xFF => try stdout.print("0x{X}", .{byte}),
+//         else => try stdout.print("{c}", .{byte}),
+//     }
+// }
+
 fn printByte(stdout: *std.Io.Writer, byte: u8) !void {
     switch (byte) {
-        0x00...0x1F, 0x7F...0xFF => try stdout.print("0x{X}", .{byte}),
-        else => try stdout.print("{c}", .{byte}),
+        0x00...0x1F, 0x7F...0xFF => {
+            try stdout.print("0x{X}", .{byte});
+        },
+        '"','\\' => {
+            try stdout.print("\"\\{c}\"", .{byte});
+        },
+        ' '...'!', '#'...'/', ':'...'@', '[', ']'...'`', '{'...'~' => {
+            try stdout.print("\"{c}\"", .{byte});
+        },
+        else => {
+            try stdout.print("{c}", .{byte});
+        },
+
     }
 }
 
@@ -545,7 +615,8 @@ pub fn dumpParker(stdout: *std.Io.Writer, dfa: *const DenseDFA, show_dead: bool)
     try stdout.print("}}\n", .{});
 
     try stdout.print("E = {{", .{});
-    for (0..256) |ch_usize| {
+    // for (0..256) |ch_usize| {
+    for (0x20..0x7F) |ch_usize| {
         if (used[ch_usize]) {
             try printByte(stdout, @intCast(ch_usize));
             try stdout.print(", ", .{});
@@ -580,7 +651,8 @@ pub fn dumpParker(stdout: *std.Io.Writer, dfa: *const DenseDFA, show_dead: bool)
         if (dfa.start == s) try stdout.print(" [start]", .{});
         try stdout.print("\n", .{});
 
-        for (0..256) |ch_usize| {
+        // for (0..256) |ch_usize| {
+        for (0x20..0x7F) |ch_usize| {
             if (!used[ch_usize]) continue;
             const to = dfa.next[s * 256 + ch_usize];
             const tu = @as(usize, to);

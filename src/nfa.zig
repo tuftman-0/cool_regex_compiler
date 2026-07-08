@@ -1,7 +1,7 @@
 const std = @import("std");
 const ast = @import("regex_ast.zig");
 
-pub const StateId = usize; // indices for states in NFA and DFA (determines max number of states)
+pub const StateId = u32; // indices for states in NFA and DFA (determines max number of states)
 
 pub const Transition = union(enum) {
     ch: struct { ch: u8, to: StateId },
@@ -40,6 +40,71 @@ pub const NFA = struct {
 
     pub fn addAny(self: *NFA, a: std.mem.Allocator, from: StateId, to: StateId) !void {
         try self.states.items[from].trans.append(a, .{ .any = .{ .to = to } });
+    }
+
+    fn wireStar(self: *NFA, allocator: std.mem.Allocator, child_frag: Frag) !Frag {
+        const start = try self.newState(allocator);
+        const accept = try self.newState(allocator);
+
+        try self.addEps(allocator, start, accept);
+        try self.addEps(allocator, start, child_frag.start);
+        try self.addEps(allocator, child_frag.accept, child_frag.start);
+        try self.addEps(allocator, child_frag.accept, accept);
+
+        return .{ .start = start, .accept = accept };
+    }
+
+    pub fn compileRegexNode(self: *NFA, allocator: std.mem.Allocator, node: *const ast.RegexNode) !Frag {
+        return switch (node.*) {
+            .epsilon => {
+                const start = try self.newState(allocator);
+                const accept = try self.newState(allocator);
+                try self.addEps(allocator, start, accept);
+                return .{ .start = start, .accept = accept };
+            },
+            .char => |c| {
+                const start = try self.newState(allocator);
+                const accept = try self.newState(allocator);
+                try self.addChar(allocator, start, c, accept);
+                return .{ .start = start, .accept = accept };
+            },
+            .any => {
+                const start = try self.newState(allocator);
+                const accept = try self.newState(allocator);
+                try self.addAny(allocator, start, accept);
+                return .{ .start = start, .accept = accept };
+            },
+            .concat => |pair| {
+                const left_frag = try self.compileRegexNode(allocator, pair.left);
+                const right_frag = try self.compileRegexNode(allocator, pair.right);
+                try self.addEps(allocator, left_frag.accept, right_frag.start);
+                return .{ .start = left_frag.start, .accept = right_frag.accept };
+            },
+            .choice => |pair| {
+                const start = try self.newState(allocator);
+                const accept = try self.newState(allocator);
+                const left_frag = try self.compileRegexNode(allocator, pair.left);
+                const right_frag = try self.compileRegexNode(allocator, pair.right);
+                try self.addEps(allocator, start, left_frag.start);
+                try self.addEps(allocator, start, right_frag.start);
+                try self.addEps(allocator, right_frag.accept, accept);
+                try self.addEps(allocator, left_frag.accept, accept);
+                return .{ .start = start, .accept = accept };
+            },
+            .star => |child| {
+                const child_frag = try self.compileRegexNode(allocator, child);
+                return try self.wireStar(allocator, child_frag);
+            },
+            .plus => |child| {
+                const first_frag = try self.compileRegexNode(allocator, child); 
+                const star_child_frag = try self.compileRegexNode(allocator, child);
+                const star_frag = try self.wireStar(allocator, star_child_frag);
+
+                try self.addEps(allocator, first_frag.accept, star_frag.start);
+
+                return .{ .start = first_frag.start, .accept = star_frag.accept };
+            },
+        };
     }
 };
 
